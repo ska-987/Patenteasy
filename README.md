@@ -1,4 +1,7 @@
-# Patenteasy 0.3.7
+# Patenteasy
+
+**Version Windows :** 0.3.8  
+**Version Android :** 0.3.7
 
 Application de gestion locale pour indépendants, artisans et petites entreprises.
 
@@ -10,8 +13,8 @@ Application de gestion locale pour indépendants, artisans et petites entreprise
 
 Patenteasy existe en deux éditions locales indépendantes :
 
-- **Windows** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
-- **Android** : application hors ligne avec stockage local sur le téléphone.
+- **Windows 0.3.8** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
+- **Android 0.3.7** : application hors ligne avec stockage local sur le téléphone.
 
 Il n'y a pas de synchronisation automatique entre Windows et Android.
 

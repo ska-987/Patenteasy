@@ -6,6 +6,22 @@ Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela e
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-10-07
+
+### Corrigé
+
+- Mise à jour Windows fiabilisée dans le paquet PyInstaller.
+- Suppression de la dépendance à un `pythonw.exe` externe pour l'assistant de mise à jour.
+- Assistant de mise à jour embarqué dans `Patenteasy.exe` via le mode `--install-update`.
+- Installateur Inno Setup aligné sur la version Windows 0.3.8 et le nom `Patenteasy-Windows-0.3.8-Installation.exe`.
+
+### Technique
+
+- `installer_mise_a_jour.py` est explicitement inclus dans la compilation PyInstaller.
+- La version Android reste en 0.3.7 : cette correction concerne uniquement l'édition Windows.
+
+## [0.3.7]
+
 ### Ajouté
 
 - Mise en place du dépôt GitHub officiel.
@@ -19,8 +35,6 @@ Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela e
 - README simplifié et mis à jour pour Patenteasy 0.3.7.
 - Instructions d'installation remplacées par une version unique et actuelle.
 - Assemblage Windows adapté à la nouvelle organisation de la documentation.
-- Mise à jour Windows corrigée pour fonctionner dans le paquet PyInstaller sans dépendre d'un `pythonw.exe` externe.
-- Version et nom de sortie Inno Setup alignés sur Patenteasy 0.3.7.
 
 ### Supprimé
 
