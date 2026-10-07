@@ -36,7 +36,7 @@ L'ancienne interface web reste dans les sources pour compatibilité et certains 
 
 ## Développement
 
-Python 3.10 ou ultérieur est requis pour travailler depuis les sources.
+Python 3.10.1 ou ultérieur est requis pour travailler depuis les sources. Sous Windows, Python 3.10.11 est recommandé ; Python 3.10.0 n'est pas pris en charge par la chaîne de compilation PyInstaller.
 
 Sous Windows :
 
