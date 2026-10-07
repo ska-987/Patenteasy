@@ -1,4 +1,4 @@
-#define MyAppVersion "0.3.2"
+#define MyAppVersion "0.3.7"
 [Setup]
 AppId={{22CBB249-971D-4915-A2CC-59A2663E80BD}
 AppName=Patenteasy
@@ -9,7 +9,7 @@ DefaultDirName={localappdata}\Programs\PatenteasyLocal
 DefaultGroupName=Patenteasy
 PrivilegesRequired=lowest
 OutputDir=sortie
-OutputBaseFilename=Patenteasy-Installation-{#MyAppVersion}
+OutputBaseFilename=Patenteasy-Windows-{#MyAppVersion}-Installation
 Compression=lzma2
 SolidCompression=yes
 LicenseFile=..\LICENSE

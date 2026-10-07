@@ -48,7 +48,36 @@ def dialogue(message: str):
         print(message, file=sys.stderr)
 
 
+def lancer_assistant_mise_a_jour() -> int:
+    """Exécute le mode d'assistance embarqué dans Patenteasy.exe."""
+    try:
+        if len(sys.argv) != 6:
+            raise RuntimeError("Arguments de mise à jour incomplets.")
+        from installer_mise_a_jour import installer
+        installer(
+            int(sys.argv[2]),
+            sys.argv[3],
+            sys.argv[4],
+            int(sys.argv[5]),
+        )
+        return 0
+    except Exception as erreur:
+        if os.name == "nt":
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                str(erreur),
+                "Patenteasy — Mise à jour",
+                0x10,
+            )
+        else:
+            print(erreur, file=sys.stderr)
+        return 1
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--install-update":
+        return lancer_assistant_mise_a_jour()
+
     os.environ["PATENTEASY_INSTALLE"] = "1"
     repertoire = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "PatenteasyLocal"
     repertoire.mkdir(parents=True, exist_ok=True)

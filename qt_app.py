@@ -1950,30 +1950,49 @@ class MainWindow(QMainWindow):
                     "Cette version nécessite une installation manuelle."
                 )
 
-            assistant = ROOT / "installer_mise_a_jour.py"
-            if not assistant.is_file():
-                raise FileNotFoundError(
-                    "Le programme d’installation de mise à jour manque."
+            # Dans la version PyInstaller, le même exécutable possède un
+            # mode d'assistance dédié. Il est lancé avant la fermeture de
+            # l'application principale, attend sa fin, revérifie le fichier,
+            # puis démarre l'installateur Windows.
+            if getattr(sys, "frozen", False):
+                commande = [
+                    str(Path(sys.executable).resolve()),
+                    "--install-update",
+                    str(os.getpid()),
+                    str(fichier.resolve()),
+                    version_proposee["sha256"],
+                    str(version_proposee["taille"]),
+                ]
+                repertoire_travail = str(
+                    Path(sys.executable).resolve().parent
                 )
-
-            # Utilise pythonw pour éviter l’ouverture d’un terminal.
-            pythonw = Path(sys.executable).with_name("pythonw.exe")
-            if not pythonw.is_file():
-                raise FileNotFoundError("pythonw.exe est introuvable.")
-
-            self.sauvegardes.creer("avant-mise-a-jour")
-            self.gestion_comptes.tracer("Installation mise à jour", version_proposee["version"])
-
-            subprocess.Popen(
-                [
-                    str(pythonw),
+            else:
+                # Mode développeur : le script reste directement exécutable
+                # avec Python sans dépendre du paquet PyInstaller.
+                assistant = ROOT / "installer_mise_a_jour.py"
+                if not assistant.is_file():
+                    raise FileNotFoundError(
+                        "Le programme d’installation de mise à jour manque."
+                    )
+                lanceur = Path(sys.executable).with_name("pythonw.exe")
+                if not lanceur.is_file():
+                    lanceur = Path(sys.executable)
+                commande = [
+                    str(lanceur),
                     str(assistant),
                     str(os.getpid()),
                     str(fichier.resolve()),
                     version_proposee["sha256"],
                     str(version_proposee["taille"]),
-                ],
-                cwd=str(ROOT),
+                ]
+                repertoire_travail = str(ROOT)
+
+            self.sauvegardes.creer("avant-mise-a-jour")
+            self.gestion_comptes.tracer("Installation mise à jour", version_proposee["version"])
+
+            subprocess.Popen(
+                commande,
+                cwd=repertoire_travail,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
 

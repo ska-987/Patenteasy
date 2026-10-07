@@ -10,11 +10,15 @@ from pathlib import Path
 import sys
 
 
-def installer():
-    pid = int(sys.argv[1])
-    fichier = Path(sys.argv[2])
-    empreinte_attendue = sys.argv[3]
-    taille_attendue = int(sys.argv[4])
+def installer(
+    pid: int,
+    fichier: str | Path,
+    empreinte_attendue: str,
+    taille_attendue: int,
+):
+    fichier = Path(fichier)
+    pid = int(pid)
+    taille_attendue = int(taille_attendue)
 
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
 
@@ -75,9 +79,16 @@ def installer():
 
 if __name__ == "__main__":
     try:
-        installer()
+        if len(sys.argv) != 5:
+            raise RuntimeError("Arguments de mise à jour incomplets.")
+        installer(
+            int(sys.argv[1]),
+            sys.argv[2],
+            sys.argv[3],
+            int(sys.argv[4]),
+        )
     except Exception as erreur:
         ctypes.windll.user32.MessageBoxW(
             None, str(erreur), "Patenteasy — Mise à jour", 0x10
         )
-        raise SystemExit(1)#
+        raise SystemExit(1)

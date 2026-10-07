@@ -19,6 +19,8 @@ Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela e
 - README simplifié et mis à jour pour Patenteasy 0.3.7.
 - Instructions d'installation remplacées par une version unique et actuelle.
 - Assemblage Windows adapté à la nouvelle organisation de la documentation.
+- Mise à jour Windows corrigée pour fonctionner dans le paquet PyInstaller sans dépendre d'un `pythonw.exe` externe.
+- Version et nom de sortie Inno Setup alignés sur Patenteasy 0.3.7.
 
 ### Supprimé
 

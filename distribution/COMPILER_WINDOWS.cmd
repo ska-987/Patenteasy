@@ -6,7 +6,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 ".venv\Scripts\python.exe" -m pip install pyinstaller==6.16.0 -r requirements.txt
 if errorlevel 1 exit /b 1
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --name Patenteasy --icon static\patenteasy.ico --hidden-import qt_app --hidden-import database --hidden-import gestion --hidden-import editeur --hidden-import mises_a_jour --hidden-import pdf_documents --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --add-data "static;static" --add-data "configuration_editeur.json;." --add-data "LICENSE;." application_windows.py
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --name Patenteasy --icon static\patenteasy.ico --hidden-import qt_app --hidden-import database --hidden-import gestion --hidden-import editeur --hidden-import mises_a_jour --hidden-import installer_mise_a_jour --hidden-import pdf_documents --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --add-data "static;static" --add-data "configuration_editeur.json;." --add-data "LICENSE;." application_windows.py
 if errorlevel 1 exit /b 1
 if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" (
     "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" distribution\Patenteasy.iss
