@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <h1>Supprimer un article</h1>
+
+    <p>
+        Voulez-vous supprimer
+        <strong>{{ article.reference }}</strong>
+        — {{ article.designation }} ?
+    </p>
+
+    <p>Cette suppression est définitive.</p>
+
+    <form
+        method="post"
+        action="/articles/{{ article.id }}/supprimer"
+    >
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Confirmer la suppression</button>
+    </form>
+
+    <p><a href="/articles">Annuler et revenir au catalogue</a></p>
+
+{% endblock %}

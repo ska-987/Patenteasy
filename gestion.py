@@ -1,0 +1,387 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 ska_987
+"""Documents immuables, règlements et réglages de Patenteasy."""
+import json
+from coffre import sqlite3
+from contextlib import contextmanager
+from datetime import date, datetime, timedelta, timezone
+import database as db
+
+class GestionDocuments:
+    """Émission, numérotation, paiements et avoirs."""
+
+    def __init__(self, base=None):
+        self.base = base if base is not None else db.base
+
+    def aujourd_hui(self):
+        return datetime.now(timezone(timedelta(hours=-10))).date()
+
+    @contextmanager
+    def connexion(self):
+        c = sqlite3.connect(self.base.chemin, timeout=15)
+        c.row_factory = sqlite3.Row
+        c.execute('PRAGMA foreign_keys = ON')
+        try:
+            c.execute('BEGIN IMMEDIATE')
+            yield c
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+        finally:
+            c.close()
+
+    def migrer(self):
+        self.base.initialiser_base()
+        with self.connexion() as c:
+            champs = {'entreprise': {'validite_devis_jours': 'INTEGER NOT NULL DEFAULT 30', 'conditions_vente': "TEXT NOT NULL DEFAULT ''", 'conditions_reglement': "TEXT NOT NULL DEFAULT ''", 'mention_complementaire': "TEXT NOT NULL DEFAULT ''", 'solde_depart_centiemes': 'INTEGER NOT NULL DEFAULT 0', 'date_solde_depart': "TEXT NOT NULL DEFAULT ''", 'periodicite_tva': "TEXT NOT NULL DEFAULT ''"}, 'devis': {'conditions_vente': "TEXT NOT NULL DEFAULT ''", 'conditions_reglement': "TEXT NOT NULL DEFAULT ''", 'mention_complementaire': "TEXT NOT NULL DEFAULT ''", 'regime_document': "TEXT NOT NULL DEFAULT ''", 'numero': 'TEXT', 'instantane': 'TEXT'}, 'fiscalite_annuelle': {'regime_confirme': "TEXT NOT NULL DEFAULT ''", 'date_confirmation': "TEXT NOT NULL DEFAULT ''", 'ca_annee_centiemes': 'INTEGER', 'date_ca': "TEXT NOT NULL DEFAULT ''"}}
+            for table, colonnes in champs.items():
+                existants = {r[1] for r in c.execute(f'PRAGMA table_info({table})')}
+                for nom, definition in colonnes.items():
+                    if nom not in existants:
+                        c.execute(f'ALTER TABLE {table} ADD COLUMN {nom} {definition}')
+            c.execute("""CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY, type TEXT NOT NULL CHECK(type IN ('facture','avoir')),
+            numero TEXT NOT NULL UNIQUE, date_document TEXT NOT NULL,
+            echeance TEXT NOT NULL, devis_id INTEGER UNIQUE REFERENCES devis(id),
+            origine_id INTEGER REFERENCES documents(id), instantane TEXT NOT NULL,
+            total_centiemes INTEGER NOT NULL CHECK(total_centiemes >= 0))""")
+            c.execute("""CREATE TABLE IF NOT EXISTS sequences (
+            type TEXT NOT NULL, annee INTEGER NOT NULL, compteur INTEGER NOT NULL,
+            PRIMARY KEY(type, annee))""")
+            c.execute("""CREATE TABLE IF NOT EXISTS paiements (
+            id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL REFERENCES documents(id),
+            date_paiement TEXT NOT NULL, montant_centiemes INTEGER NOT NULL CHECK(montant_centiemes>0),
+            mode TEXT NOT NULL, reference TEXT NOT NULL DEFAULT '',
+            operation_id INTEGER UNIQUE REFERENCES operations(id))""")
+            c.execute("""CREATE TABLE IF NOT EXISTS remboursements (
+            id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL REFERENCES documents(id),
+            date_remboursement TEXT NOT NULL, montant_centiemes INTEGER NOT NULL CHECK(montant_centiemes>0),
+            mode TEXT NOT NULL, operation_id INTEGER UNIQUE REFERENCES operations(id))""")
+            c.execute("""CREATE TABLE IF NOT EXISTS rappels (
+            id INTEGER PRIMARY KEY, titre TEXT NOT NULL, echeance TEXT NOT NULL,
+            fait INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT '',
+            UNIQUE(titre,echeance))""")
+            c.execute("""CREATE TABLE IF NOT EXISTS stock_mouvements (
+            id INTEGER PRIMARY KEY, article_id INTEGER NOT NULL REFERENCES articles(id),
+            date_mouvement TEXT NOT NULL, quantite_centiemes INTEGER NOT NULL,
+            motif TEXT NOT NULL)""")
+
+    def liste(self, sql, params=()):
+        c = sqlite3.connect(self.base.chemin)
+        c.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in c.execute(sql, params)]
+        finally:
+            c.close()
+
+    def nombre_jours(self, valeur):
+        try:
+            n = int(str(valeur))
+        except ValueError:
+            raise ValueError('Saisissez une durée entière.') from None
+        if not 1 <= n <= 365:
+            raise ValueError('La validité doit être comprise entre 1 et 365 jours.')
+        return n
+
+    def date_valide(self, texte):
+        try:
+            return date.fromisoformat(texte).isoformat()
+        except (ValueError, TypeError):
+            raise ValueError('Date invalide.') from None
+
+    def creer_devis(self, client_id, date_devis, objet=''):
+        date_devis = self.date_valide(date_devis)
+        with self.connexion() as c:
+            if not c.execute('SELECT id FROM clients WHERE id=?', (client_id,)).fetchone():
+                raise ValueError('Choisissez un client existant.')
+            e = dict(c.execute('SELECT * FROM entreprise WHERE id=1').fetchone())
+            return c.execute("""INSERT INTO devis
+            (client_id,date_devis,objet,validite_jours,conditions_vente,conditions_reglement,mention_complementaire)
+            VALUES(?,?,?,?,?,?,?)""", (client_id, date_devis, objet.strip(), e['validite_devis_jours'], e['conditions_vente'], e['conditions_reglement'], e['mention_complementaire'])).lastrowid
+
+    def modifier_devis(self, identifiant, client_id, date_devis, objet, validite, vente, reglement, mention):
+        date_devis = self.date_valide(date_devis)
+        with self.connexion() as c:
+            d = c.execute('SELECT * FROM devis WHERE id=?', (identifiant,)).fetchone()
+            if not d or d['statut'] != 'brouillon':
+                raise ValueError('Seul un brouillon peut être modifié.')
+            if not c.execute('SELECT id FROM clients WHERE id=?', (client_id,)).fetchone():
+                raise ValueError('Client introuvable.')
+            c.execute("""UPDATE devis SET client_id=?,date_devis=?,objet=?,validite_jours=?,
+            conditions_vente=?,conditions_reglement=?,mention_complementaire=? WHERE id=?""", (client_id, date_devis, objet.strip(), self.nombre_jours(validite), vente.strip(), reglement.strip(), mention.strip(), identifiant))
+
+    def regler_entreprise(self, validite, vente, reglement, mention, periodicite, solde, date_solde):
+        if periodicite not in ('', 'mensuelle', 'trimestrielle'):
+            raise ValueError('Périodicité invalide.')
+        from decimal import Decimal, InvalidOperation
+        try:
+            valeur = Decimal(solde.replace(',', '.'))
+            if not valeur.is_finite() or abs(valeur) > Decimal('999999999999.99') or valeur != valeur.quantize(Decimal('.01')):
+                raise ValueError('Solde invalide.')
+        except InvalidOperation:
+            raise ValueError('Solde invalide.') from None
+        if date_solde:
+            date_solde = self.date_valide(date_solde)
+        with self.connexion() as c:
+            c.execute("""UPDATE entreprise SET validite_devis_jours=?,conditions_vente=?,conditions_reglement=?,
+            mention_complementaire=?,periodicite_tva=?,solde_depart_centiemes=?,date_solde_depart=? WHERE id=1""", (self.nombre_jours(validite), vente.strip(), reglement.strip(), mention.strip(), periodicite, int(valeur * 100), date_solde))
+
+    def confirmer_fiscalite(self, annee, regime, date_confirmation, ca, date_ca):
+        if regime not in ('', 'franchise', 'reel'):
+            raise ValueError('Régime invalide.')
+        if regime and (not date_confirmation):
+            raise ValueError('Renseignez la date à partir de laquelle ce régime est confirmé.')
+        if date_confirmation:
+            date_confirmation = self.date_valide(date_confirmation)
+        montant = self.base.convertir_en_centiemes(ca) if ca.strip() else None
+        if montant is not None:
+            if not date_ca or date.fromisoformat(self.date_valide(date_ca)).year != annee:
+                raise ValueError('Date du CA requise dans l’année sélectionnée.')
+        with self.connexion() as c:
+            c.execute("""INSERT INTO fiscalite_annuelle(annee,regime_confirme,date_confirmation,ca_annee_centiemes,date_ca)
+            VALUES(?,?,?,?,?) ON CONFLICT(annee) DO UPDATE SET regime_confirme=excluded.regime_confirme,
+            date_confirmation=excluded.date_confirmation,ca_annee_centiemes=excluded.ca_annee_centiemes,date_ca=excluded.date_ca""", (annee, regime, date_confirmation, montant, date_ca))
+
+    def regime_a_la_date(self, jour):
+        f = self.base.obtenir_fiscalite_annuelle(date.fromisoformat(jour).year) or {}
+        if f.get('ca_annee_centiemes') is not None and f['ca_annee_centiemes'] > 10000000 * 100 and (not f.get('date_depassement')) and (f.get('regime_confirme') != 'reel'):
+            return ''
+        connu = self.base.determiner_tva_devis(jour)
+        if connu['applicable'] is True:
+            return 'reel'
+        if f.get('regime_confirme') and f.get('date_confirmation') and (f['date_confirmation'] <= jour):
+            return f['regime_confirme']
+        return ''
+
+    def calculer(self, devis_id):
+        d = self.base.obtenir_devis(devis_id)
+        if not d:
+            raise ValueError('Devis introuvable.')
+        if d.get('instantane'):
+            return json.loads(d['instantane'])
+        regime = self.regime_a_la_date(d['date_devis'])
+        lignes = self.base.lister_lignes_devis(devis_id)
+        groupes = {}
+        for l in lignes:
+            l['ht'] = (l['quantite_centiemes'] * l['prix_unitaire_centiemes'] + 50) // 100
+            l['tva'] = (l['ht'] * l['taxe_centiemes'] + 5000) // 10000 if regime == 'reel' else 0
+            l['ttc'] = l['ht'] + l['tva']
+            if regime == 'reel':
+                g = groupes.setdefault(str(l['taxe_centiemes']), {'taux': l['taxe_centiemes'], 'base': 0, 'tva': 0})
+                g['base'] += l['ht']
+                g['tva'] += l['tva']
+        ht = sum((l['ht'] for l in lignes))
+        tva = sum((l['tva'] for l in lignes))
+        return {'devis': d, 'entreprise': self.base.obtenir_entreprise(), 'client': self.base.obtenir_client(d['client_id']), 'lignes': lignes, 'regime': regime, 'groupes': list(groupes.values()), 'ht': ht, 'tva': tva, 'ttc': ht + tva, 'validite': (date.fromisoformat(d['date_devis']) + timedelta(days=d['validite_jours'])).isoformat(), 'mention_tva': 'TVA non applicable, franchise en base' if regime == 'franchise' else '', 'conditions_vente': d['conditions_vente'], 'conditions_reglement': d['conditions_reglement'], 'mention_complementaire': d['mention_complementaire']}
+
+    def verifier_emission(self, s):
+        e = s['entreprise']
+        if not e['nom'].strip() or not e['adresse'].strip() or (not e['numero_tahiti'].strip()):
+            raise ValueError('Complétez le nom, l’adresse et le numéro TAHITI de votre entreprise.')
+        if not s['lignes']:
+            raise ValueError('Ajoutez au moins une ligne.')
+        if not s['regime']:
+            raise ValueError('Confirmez le régime applicable dans la reprise fiscale avant l’émission.')
+        if not s['conditions_reglement'].strip():
+            raise ValueError('Renseignez les conditions de règlement.')
+        if s['regime'] == 'reel' and any((l['taxe_centiemes'] == 0 for l in s['lignes'])) and (not s['mention_complementaire'].strip()):
+            raise ValueError('Pour une ligne sans TVA au réel, indiquez le motif applicable dans les mentions complémentaires.')
+
+    def numero(self, c, type_doc, annee):
+        import re
+        prefix = {'devis': 'dev', 'facture': 'fact', 'avoir': 'av'}[type_doc]
+        c.execute('INSERT OR IGNORE INTO sequences VALUES(?,?,0)', (type_doc, 0))
+        compteur = c.execute('SELECT compteur FROM sequences WHERE type=? AND annee=0', (type_doc,)).fetchone()[0]
+        table = 'devis' if type_doc == 'devis' else 'documents'
+        for r in c.execute(f'SELECT numero FROM {table} WHERE numero IS NOT NULL'):
+            match = re.fullmatch(re.escape(prefix) + '-(\\d+)', r['numero'])
+            if match:
+                compteur = max(compteur, int(match.group(1)))
+        compteur += 1
+        c.execute('UPDATE sequences SET compteur=? WHERE type=? AND annee=0', (compteur, type_doc))
+        return f'{prefix}-{compteur:05d}'
+
+    def emettre_devis(self, identifiant):
+        with self.connexion() as c:
+            d = c.execute('SELECT * FROM devis WHERE id=?', (identifiant,)).fetchone()
+            if not d or d['statut'] != 'brouillon':
+                raise ValueError('Ce devis n’est plus un brouillon.')
+            s = self.calculer(identifiant)
+            self.verifier_emission(s)
+            n = self.numero(c, 'devis', int(d['date_devis'][:4]))
+            s['numero'] = n
+            c.execute("UPDATE devis SET numero=?,instantane=?,statut='envoye' WHERE id=?", (n, json.dumps(s, ensure_ascii=False), identifiant))
+
+    def decision_devis(self, identifiant, statut):
+        if statut not in ('accepte', 'refuse'):
+            raise ValueError('Décision invalide.')
+        with self.connexion() as c:
+            d = c.execute('SELECT * FROM devis WHERE id=?', (identifiant,)).fetchone()
+            if not d or d['statut'] != 'envoye':
+                raise ValueError('Enregistrez la décision sur un devis émis.')
+            if statut == 'accepte' and self.aujourd_hui() > date.fromisoformat(json.loads(d['instantane'])['validite']):
+                raise ValueError('Le devis est expiré. Créez une nouvelle version.')
+            c.execute('UPDATE devis SET statut=? WHERE id=?', (statut, identifiant))
+
+    def dupliquer_devis(self, identifiant):
+        with self.connexion() as c:
+            d = c.execute('SELECT * FROM devis WHERE id=?', (identifiant,)).fetchone()
+            if not d:
+                raise ValueError('Devis introuvable.')
+            nid = c.execute("""INSERT INTO devis(client_id,date_devis,objet,validite_jours,conditions_vente,
+            conditions_reglement,mention_complementaire) VALUES(?,?,?,?,?,?,?)""", (d['client_id'], self.aujourd_hui().isoformat(), d['objet'], d['validite_jours'], d['conditions_vente'], d['conditions_reglement'], d['mention_complementaire'])).lastrowid
+            c.execute("""INSERT INTO devis_lignes(devis_id,reference,designation,unite,quantite_centiemes,prix_unitaire_centiemes,taxe_centiemes)
+            SELECT ?,reference,designation,unite,quantite_centiemes,prix_unitaire_centiemes,taxe_centiemes FROM devis_lignes WHERE devis_id=?""", (nid, identifiant))
+            return nid
+
+    def creer_facture(self, devis_id, jour, echeance):
+        jour = self.date_valide(jour)
+        echeance = self.date_valide(echeance)
+        if jour > self.aujourd_hui().isoformat() or echeance < jour:
+            raise ValueError('Date future ou échéance antérieure à la facture.')
+        with self.connexion() as c:
+            d = c.execute('SELECT * FROM devis WHERE id=?', (devis_id,)).fetchone()
+            if not d or d['statut'] != 'accepte':
+                raise ValueError('Enregistrez d’abord l’acceptation du devis.')
+            if c.execute('SELECT id FROM documents WHERE devis_id=?', (devis_id,)).fetchone():
+                raise ValueError('Une facture existe déjà pour ce devis.')
+            s = json.loads(d['instantane'])
+            regime = self.regime_a_la_date(jour)
+            if not regime or regime != s['regime']:
+                raise ValueError('Le régime a changé ou reste inconnu à la date de facture. Établissez un nouveau devis adapté.')
+            if jour < d['date_devis']:
+                raise ValueError('La facture ne peut pas précéder le devis.')
+            n = self.numero(c, 'facture', int(jour[:4]))
+            s.update(numero=n, date_document=jour, echeance=echeance, type='facture', numero_devis=d['numero'])
+            return c.execute("""INSERT INTO documents(type,numero,date_document,echeance,devis_id,instantane,total_centiemes)
+            VALUES('facture',?,?,?,?,?,?)""", (n, jour, echeance, devis_id, json.dumps(s, ensure_ascii=False), s['ttc'])).lastrowid
+
+    def documents(self):
+        return self.liste("""SELECT d.*, COALESCE((SELECT SUM(montant_centiemes) FROM paiements WHERE document_id=d.id),0) AS paye,
+        COALESCE((SELECT SUM(total_centiemes) FROM documents WHERE origine_id=d.id),0) AS credite
+        FROM documents d ORDER BY date_document DESC,id DESC""")
+
+    def document(self, identifiant):
+        for d in self.documents():
+            if d['id'] == identifiant:
+                d['contenu'] = json.loads(d['instantane'])
+                d['reste'] = max(0, d['total_centiemes'] - d['paye'] - d['credite'])
+                d['remboursements'] = self.liste('SELECT * FROM remboursements WHERE document_id=? ORDER BY id', (identifiant,))
+                d['a_rembourser'] = max(0, d['paye'] - (d['total_centiemes'] - d['credite'])) - sum((r['montant_centiemes'] for r in d['remboursements']))
+                d['paiements'] = self.liste('SELECT * FROM paiements WHERE document_id=? ORDER BY date_paiement,id', (identifiant,))
+                return d
+        raise ValueError('Document introuvable.')
+
+    def payer(self, identifiant, jour, montant, mode, reference):
+        jour = self.date_valide(jour)
+        m = self.base.convertir_en_centiemes(montant)
+        if mode not in ('virement', 'carte', 'especes', 'cheque', 'autre') or m <= 0:
+            raise ValueError('Montant ou moyen de paiement invalide.')
+        if mode == 'especes' and m % 500:
+            raise ValueError('En espèces, saisissez le montant effectivement encaissé, multiple de 5 F CFP. Utilisez un ajustement documenté si nécessaire.')
+        with self.connexion() as c:
+            d = self.document(identifiant)
+            if d['type'] != 'facture' or m > d['reste']:
+                raise ValueError('Le paiement dépasse le reste dû ou le document n’est pas une facture.')
+            if jour < d['date_document'] or jour > self.aujourd_hui().isoformat():
+                raise ValueError('Date de paiement invalide.')
+            f = self.base.obtenir_fiscalite_annuelle(int(jour[:4])) or {}
+            fin = f.get('date_fin_reprise', '')
+            if fin and jour <= fin:
+                raise ValueError('Paiement compris dans la reprise : ne le saisissez pas une seconde fois. Corrigez d’abord la reprise.')
+            op = c.execute('INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes) VALUES(?,?,?,?)', (jour, 'Paiement ' + d['numero'], 'recette', m)).lastrowid
+            c.execute('INSERT INTO paiements(document_id,date_paiement,montant_centiemes,mode,reference,operation_id) VALUES(?,?,?,?,?,?)', (identifiant, jour, m, mode, reference.strip(), op))
+
+    def creer_avoir(self, identifiant, motif, quantites=None):
+        from coffre import ACTIF
+        if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
+            raise PermissionError('Action réservée à l’administrateur.')
+        if not motif.strip():
+            raise ValueError('Indiquez le motif de l’avoir.')
+        with self.connexion() as c:
+            d = self.document(identifiant)
+            if d['type'] != 'facture':
+                raise ValueError('Choisissez une facture.')
+            if d['credite'] >= d['total_centiemes']:
+                raise ValueError('La facture est déjà entièrement créditée.')
+            deja = {}
+            for r in c.execute('SELECT instantane FROM documents WHERE origine_id=?', (identifiant,)):
+                for l in json.loads(r[0])['lignes']:
+                    deja[l['id']] = deja.get(l['id'], 0) + l['quantite_centiemes']
+            s = json.loads(d['instantane'])
+            lignes = []
+            groupes = {}
+            for l in s['lignes']:
+                restant = l['quantite_centiemes'] - deja.get(l['id'], 0)
+                q = restant if quantites is None else self.base.convertir_en_centiemes(quantites.get(str(l['id']), '0') or '0')
+                if q > restant:
+                    raise ValueError('La quantité à créditer dépasse la quantité restante de ' + l['designation'])
+                if not q:
+                    continue
+                l['quantite_centiemes'] = q
+                l['ht'] = (q * l['prix_unitaire_centiemes'] + 50) // 100
+                l['tva'] = (l['ht'] * l['taxe_centiemes'] + 5000) // 10000 if s['regime'] == 'reel' else 0
+                l['ttc'] = l['ht'] + l['tva']
+                lignes.append(l)
+                gr = groupes.setdefault(str(l['taxe_centiemes']), {'taux': l['taxe_centiemes'], 'base': 0, 'tva': 0})
+                gr['base'] += l['ht']
+                gr['tva'] += l['tva']
+            if not lignes:
+                raise ValueError('Indiquez au moins une quantité à créditer.')
+            ht = sum((l['ht'] for l in lignes))
+            tva = sum((l['tva'] for l in lignes))
+            if ht + tva > d['total_centiemes'] - d['credite']:
+                raise ValueError('Les arrondis dépassent le montant restant à créditer. Regroupez les quantités dans un seul avoir.')
+            jour = self.aujourd_hui().isoformat()
+            n = self.numero(c, 'avoir', int(jour[:4]))
+            s.update(numero=n, type='avoir', date_document=jour, echeance=jour, origine_numero=d['numero'], motif=motif.strip(), lignes=lignes, ht=ht, tva=tva, ttc=ht + tva, groupes=list(groupes.values()))
+            return c.execute("""INSERT INTO documents(type,numero,date_document,echeance,origine_id,instantane,total_centiemes)
+            VALUES('avoir',?,?,?,?,?,?)""", (n, jour, jour, identifiant, json.dumps(s, ensure_ascii=False), ht + tva)).lastrowid
+
+    def rembourser(self, identifiant, jour, montant, mode):
+        from coffre import ACTIF
+        if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
+            raise PermissionError('Action réservée à l’administrateur.')
+        jour = self.date_valide(jour)
+        m = self.base.convertir_en_centiemes(montant)
+        if m <= 0 or mode not in ('virement', 'carte', 'especes', 'cheque', 'autre'):
+            raise ValueError('Montant ou moyen de remboursement invalide.')
+        if mode == 'especes' and m % 500:
+            raise ValueError('Le montant en espèces doit être un multiple de 5 F CFP.')
+        with self.connexion() as c:
+            d = self.document(identifiant)
+            deja = c.execute('SELECT COALESCE(SUM(montant_centiemes),0) FROM remboursements WHERE document_id=?', (identifiant,)).fetchone()[0]
+            maximum = max(0, d['paye'] - (d['total_centiemes'] - d['credite'])) - deja
+            if d['type'] != 'facture' or m > maximum:
+                raise ValueError('Le remboursement dépasse le montant disponible après avoir.')
+            if jour < d['date_document'] or jour > self.aujourd_hui().isoformat():
+                raise ValueError('Date invalide.')
+            f = self.base.obtenir_fiscalite_annuelle(int(jour[:4])) or {}
+            if f.get('date_fin_reprise', '') and jour <= f['date_fin_reprise']:
+                raise ValueError('Date comprise dans la reprise.')
+            op = c.execute('INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes) VALUES(?,?,?,?)', (jour, 'Remboursement ' + d['numero'], 'depense', m)).lastrowid
+            c.execute('INSERT INTO remboursements(document_id,date_remboursement,montant_centiemes,mode,operation_id) VALUES(?,?,?,?,?)', (identifiant, jour, m, mode, op))
+
+    def stock(self):
+        return self.liste("""SELECT a.*,COALESCE(SUM(s.quantite_centiemes),0) AS stock FROM articles a
+        LEFT JOIN stock_mouvements s ON s.article_id=a.id WHERE a.type_article='produit' GROUP BY a.id ORDER BY designation""")
+
+    def bouger_stock(self, article_id, jour, quantite, sens, motif):
+        q = self.base.convertir_en_centiemes(quantite)
+        jour = self.date_valide(jour)
+        if q <= 0 or sens not in ('entree', 'sortie') or (not motif.strip()) or (jour > self.aujourd_hui().isoformat()):
+            raise ValueError('Renseignez une quantité positive, une date passée et un motif.')
+        with self.connexion() as c:
+            a = c.execute('SELECT * FROM articles WHERE id=?', (article_id,)).fetchone()
+            if not a or a['type_article'] != 'produit':
+                raise ValueError('Choisissez un produit.')
+            total = c.execute('SELECT COALESCE(SUM(quantite_centiemes),0) FROM stock_mouvements WHERE article_id=?', (article_id,)).fetchone()[0]
+            if sens == 'sortie' and q > total:
+                raise ValueError('Stock insuffisant.')
+            c.execute('INSERT INTO stock_mouvements(article_id,date_mouvement,quantite_centiemes,motif) VALUES(?,?,?,?)', (article_id, jour, q if sens == 'entree' else -q, motif.strip()))
+
+gestion = GestionDocuments()
+
+def __getattr__(nom):
+    return getattr(gestion, nom)

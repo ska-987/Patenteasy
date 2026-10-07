@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <p><a href="/">Retour à l’accueil</a></p>
+
+    <h1>Recettes et dépenses — {{ annee }}</h1>
+
+    <form method="get" action="/journal">
+        <label for="annee">Année</label>
+        <input
+            id="annee"
+            name="annee"
+            type="number"
+            min="1900"
+            value="{{ annee }}"
+            required
+        >
+        <button type="submit">Afficher</button>
+    </form>
+
+    <h2>Résumé annuel des montants enregistrés</h2>
+
+    {% for alerte in resume.alertes %}
+    <p role="alert">{{ alerte }}</p>
+    {% endfor %}
+
+    <p>
+        Recettes :
+        <strong>{{ resume.recettes | centiemes }} F CFP</strong>
+    </p>
+
+    <p>
+        Dépenses :
+        <strong>{{ resume.depenses | centiemes }} F CFP</strong>
+    </p>
+
+    <p>
+        Différence :
+        <strong>{{ resume.difference | centiemes }} F CFP</strong>
+
+        Ce résumé réunit la reprise et les opérations du journal.
+        La différence n’est ni votre solde bancaire,
+        ni votre bénéfice comptable.
+    </p>
+
+    <h2>Ajouter une opération</h2>
+
+    {% if erreur %}
+    <p role="alert">{{ erreur }}</p>
+    {% endif %}
+
+    <form method="post" action="/journal">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+
+        <p>
+            <label for="date_operation">Date</label><br>
+            <input
+                id="date_operation"
+                name="date_operation"
+                type="date"
+                value="{{ saisie.get('date_operation', '') }}"
+                required
+            >
+        </p>
+
+        <p>
+            <label for="libelle">Libellé</label><br>
+            <input
+                id="libelle"
+                name="libelle"
+                value="{{ saisie.get('libelle', '') }}"
+                required
+            >
+        </p>
+
+        <p>
+            <label for="type_operation">Type</label><br>
+            <select id="type_operation" name="type_operation">
+                <option
+                    value="recette"
+                    {% if saisie.get('type_operation', 'recette') == 'recette' %}
+                    selected
+                    {% endif %}
+                >Recette encaissée</option>
+
+                <option
+                    value="depense"
+                    {% if saisie.get('type_operation') == 'depense' %}
+                    selected
+                    {% endif %}
+                >Dépense payée</option>
+            </select>
+        </p>
+
+        <p>
+            <label for="montant">Montant en F CFP</label><br>
+            <input
+                id="montant"
+                name="montant"
+                type="text"
+                inputmode="decimal"
+                value="{{ saisie.get('montant', '') }}"
+                required
+            >
+        </p>
+
+        <button type="submit">Enregistrer l’opération</button>
+    </form>
+    <details>
+        <summary>Voir le résumé mois par mois</summary>
+
+        <p>
+            Un zéro ne confirme pas que la saisie est complète.
+            Les mois précédents non vérifiés affichent
+            « Non renseigné ».
+        </p>
+
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mois</th>
+                        <th>Recettes</th>
+                        <th>Dépenses</th>
+                        <th>Différence</th>
+                        <th>Recettes {{ annee - 1 }}</th>
+                        <th>Dépenses {{ annee - 1 }}</th>
+                        <th>Écart des recettes</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for ligne in mensuel %}
+                    <tr>
+                        <td>{{ ligne.nom_mois }}</td>
+
+                        <td>
+                            {{ ligne.recettes | centiemes }} F CFP
+                        </td>
+
+                        <td>
+                            {{ ligne.depenses | centiemes }} F CFP
+                        </td>
+
+                        <td>
+                            {{ ligne.difference | centiemes }} F CFP
+                        </td>
+
+                        <td>
+                            {% if ligne.precedent_disponible %}
+                            {{ ligne.recettes_precedentes | centiemes }} F CFP
+                            {% else %}
+                            Non renseigné
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if ligne.precedent_disponible %}
+                            {{ ligne.depenses_precedentes | centiemes }} F CFP
+                            {% else %}
+                            Non renseigné
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if ligne.precedent_disponible %}
+                            {{ ligne.ecart_recettes | centiemes }} F CFP
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+
+    <h2>Opérations enregistrées</h2>
+
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Libellé</th>
+                    <th>Type</th>
+                    <th>Montant</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for operation in operations %}
+                <tr>
+                    <td>{{ operation.date_operation }}</td>
+                    <td>{{ operation.libelle }}</td>
+                    <td>
+                        {% if operation.type_operation == 'recette' %}
+                        Recette
+                        {% else %}
+                        Dépense
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ operation.montant_centiemes | centiemes }} F CFP
+                    </td>
+
+                    <td>
+                        <a href="/journal/{{ operation.id }}/modifier">Modifier</a>
+                        |
+                        <a href="/journal/{{ operation.id }}/supprimer">Supprimer</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5">Aucune opération enregistrée.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+{% endblock %}

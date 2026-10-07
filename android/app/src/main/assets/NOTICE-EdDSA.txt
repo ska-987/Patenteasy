@@ -1,0 +1,4 @@
+EdDSA-Java 0.3.0 — str4d / contributors.
+CC0 1.0 Universal. Sources complètes : eddsa-0.3.0-sources.jar.
+Origine : https://github.com/str4d/ed25519-java
+Bibliothèque utilisée seulement pour vérifier les signatures Ed25519 des catalogues.

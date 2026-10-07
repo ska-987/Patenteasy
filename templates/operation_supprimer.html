@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <h1>Supprimer une opération</h1>
+
+    <p>{{ operation.date_operation }} — {{ operation.libelle }}</p>
+
+    <p>
+        Montant :
+        <strong>
+            {{ operation.montant_centiemes | centiemes }} F CFP
+        </strong>
+    </p>
+
+    <p>Confirmez-vous cette suppression définitive ?</p>
+
+    <form
+        method="post"
+        action="/journal/{{ operation.id }}/supprimer"
+    >
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Confirmer la suppression</button>
+    </form>
+
+    <p>
+        <a href="/journal?annee={{ operation.date_operation[:4] }}">
+            Annuler
+        </a>
+    </p>
+
+{% endblock %}

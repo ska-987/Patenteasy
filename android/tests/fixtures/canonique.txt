@@ -1,0 +1,1 @@
+{"android":{"format":"apk","notes":"évolution\nTahiti 🌴 <test>/","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","taille":987654,"url":"https://patenteasy-updates.sav-centreprotech.workers.dev/android","version":"0.3.7"},"windows":{"taille":1,"version":"0.3.6"}}

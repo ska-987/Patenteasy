@@ -1,0 +1,18 @@
+{
+  "windows": {
+    "version": "0.3.0",
+    "url": "https://VOTRE-DOMAINE/Patenteasy-Windows-0.3.0.zip",
+    "sha256": "REMPLACER_PAR_L_EMPREINTE_SHA256_DU_FICHIER",
+    "taille": 0,
+    "notes": "Décrire les changements avant publication.",
+    "format": "zip"
+  },
+  "android": {
+    "version": "0.3.0",
+    "url": "https://VOTRE-DOMAINE/Patenteasy-0.3.0.apk",
+    "sha256": "REMPLACER_PAR_L_EMPREINTE_SHA256_DU_FICHIER",
+    "taille": 0,
+    "notes": "Conserver la même signature Android.",
+    "format": "apk"
+  }
+}

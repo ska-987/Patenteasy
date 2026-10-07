@@ -1,0 +1,26 @@
+package pf.ska987.patenteasy;
+import org.json.*;import android.content.Context;import java.nio.file.*;import java.util.*;
+public final class TestsCoffre {
+ static int n;interface T{void run()throws Exception;}static void ok(boolean b,String s){if(!b)throw new AssertionError(s);n++;}static void refuse(T t,String s)throws Exception{boolean e=false;try{t.run();}catch(Exception attendu){e=true;}ok(e,s);}
+ static String vide(){return "{\"schema\":2,\"entreprise\":{\"nom\":\"SECRET SOCIETE\"},\"clients\":[{\"id\":\"client1\",\"nom\":\"CLIENT CONFIDENTIEL\"}],\"articles\":[],\"devis\":[],\"factures\":[],\"journal\":[],\"sequences\":{\"dev\":0,\"fact\":0,\"av\":0},\"ouvertures\":0}";}
+ public static void main(String[] args)throws Exception {
+  Path dossier=Files.createTempDirectory("patenteasy-coffre-test-");Context context=new Context(dossier.toFile());context.getSharedPreferences("patenteasy_local",0).edit().putString("donnees",vide()).commit();Coffre c=new Coffre(context);
+  refuse(()->c.creerAdmin("ad","court"),"identifiants faibles refusés");String code=c.creerAdmin("admin","Mon mot de passe admin 1");ok(c.charger().contains("CLIENT CONFIDENTIEL"),"migration conserve les clients");ok(context.getSharedPreferences("patenteasy_local",0).getString("donnees","").isEmpty(),"ancien stockage retiré");
+  String disque=Files.readString(dossier.resolve("coffre-v1.json"));ok(!disque.contains("SECRET SOCIETE")&&!disque.contains("CLIENT CONFIDENTIEL")&&!disque.contains("Mon mot"),"aucune donnée métier ni mot de passe en clair");
+  c.creerUtilisateur("employe","Mot de passe employe 1");byte[] backup=c.backup();ok(!new String(backup).contains("CLIENT CONFIDENTIEL"),"sauvegarde chiffrée");c.verrouiller();refuse(()->c.charger(),"lecture verrouillée");refuse(()->c.connexion("employe","mauvais"),"mauvais mot de passe");Thread.sleep(1100);c.connexion("employe","Mot de passe employe 1");ok(new JSONObject(c.session()).getString("role").equals("utilisateur"),"rôle utilisateur");
+  refuse(()->c.creerUtilisateur("autre","Mot de passe nouveau"),"création de comptes admin seulement");refuse(()->c.listeComptes(),"liste comptes admin seulement");refuse(()->c.journal(),"audit admin seulement");refuse(()->c.restaurer(backup),"restauration admin seulement");
+  JSONObject d=new JSONObject(c.charger());d.getJSONObject("entreprise").put("nom","PIRATE");refuse(()->c.sauver(d.toString()),"réglages entreprise protégés nativement");
+  JSONObject dep=new JSONObject(c.charger());dep.getJSONArray("journal").put(new JSONObject().put("id","dep1").put("type","depense").put("montant",10000).put("date","2026-10-07").put("libelle","Fournisseur"));ok(c.sauver(dep.toString()),"règlement fournisseur autorisé");
+  JSONObject recette=new JSONObject(c.charger());recette.getJSONArray("journal").put(new JSONObject().put("id","rec1").put("type","recette").put("montant",1));refuse(()->c.sauver(recette.toString()),"recette manuelle hors facture refusée");
+  c.preferences("{\"theme\":\"sombre\",\"accent\":\"#285b9b\",\"verrouillage\":1}");ok(new JSONObject(c.session()).getJSONObject("preferences").getString("theme").equals("sombre"),"préférences individuelles");c.changerMot("Mot de passe employe 1","Nouveau mot de passe employe");
+  java.lang.reflect.Field field=Coffre.class.getDeclaredField("derniereAction");field.setAccessible(true);field.setLong(c,System.currentTimeMillis()-61000);refuse(()->c.charger(),"verrouillage automatique");
+  c.connexion("admin","Mon mot de passe admin 1");c.actif("employe",false);c.verrouiller();refuse(()->c.connexion("employe","Nouveau mot de passe employe"),"compte désactivé refusé");Thread.sleep(1100);c.connexion("admin","Mon mot de passe admin 1");
+  JSONObject envelope=new JSONObject(Files.readString(dossier.resolve("coffre-v1.json")));envelope.getJSONObject("comptes").getJSONObject("employe").put("role","admin").put("actif",true);Files.writeString(dossier.resolve("coffre-v1.json"),envelope.toString());Coffre pirate=new Coffre(context);refuse(()->pirate.connexion("employe","Nouveau mot de passe employe"),"changement de rôle sans réenveloppement refusé");
+  byte[] tamper=backup.clone();tamper[tamper.length/3]^=1;refuse(()->c.restaurer(tamper),"sauvegarde altérée refusée");
+  String nouveauCode=c.recuperer(code,"Nouveau mot de passe admin");ok(!nouveauCode.equals(code),"code de récupération renouvelé");c.verrouiller();c.connexion("admin","Nouveau mot de passe admin");
+  byte[] neuf=c.backup();Context destination=new Context(Files.createTempDirectory("patenteasy-nouveau-").toFile());Coffre restaure=new Coffre(destination);String secours=restaure.restaurerNouveau(neuf,nouveauCode,"Mot de passe nouvel admin");ok(restaure.charger().contains("CLIENT CONFIDENTIEL"),"restauration sur nouveau téléphone");ok(!secours.equals(nouveauCode),"récupération renouvelée après restauration");
+  refuse(()->restaure.restaurerNouveau(neuf,nouveauCode,"Mot de passe nouvel admin"),"pas de remplacement du coffre existant par premier démarrage");
+  JSONObject before=new JSONObject(vide()),after=new JSONObject(vide());before.getJSONObject("sequences").put("fact",3);refuse(()->Droits.restauration(before,after),"numérotation non régressante");
+  System.out.println(n+" contrôles de coffre Android réussis (JVM, stockage Android simulé).");
+ }
+}

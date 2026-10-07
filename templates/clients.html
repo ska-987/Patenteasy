@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <p><a href="/">Retour à l’accueil</a></p>
+
+    <h1>Clients</h1>
+
+    <h2>Ajouter un client</h2>
+
+    {% if erreur %}
+    <p role="alert">{{ erreur }}</p>
+    {% endif %}
+
+    <form method="post" action="/clients">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p>
+            <label for="nom">Nom (obligatoire)</label><br>
+            <input id="nom" name="nom" type="text" required
+                   value="{{ saisie.get('nom', '') }}">
+        </p>
+
+        <p>
+            <label for="telephone">Téléphone</label><br>
+            <input id="telephone" name="telephone" type="tel"
+                   value="{{ saisie.get('telephone', '') }}">
+        </p>
+
+        <p>
+            <label for="email">Email</label><br>
+            <input id="email" name="email" type="email"
+                   value="{{ saisie.get('email', '') }}">
+        </p>
+
+        <p>
+            <label for="adresse">Adresse</label><br>
+            <textarea id="adresse" name="adresse"
+                      rows="3">{{ saisie.get('adresse', '') }}</textarea>
+        </p>
+
+        <button type="submit">Enregistrer le client</button>
+    </form>
+
+    <h2>Liste des clients</h2>
+
+    <div class="table-scroll"><table>
+        <thead>
+            <tr>
+                <th scope="col">Nom</th>
+                <th scope="col">Téléphone</th>
+                <th scope="col">Email</th>
+                <th scope="col">Adresse</th>
+                <th scope="col">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for client in clients %}
+            <tr>
+                <td>{{ client.nom }}</td>
+                <td>{{ client.telephone }}</td>
+                <td>{{ client.email }}</td>
+                <td>{{ client.adresse }}</td>
+                <td>
+                    <a href="/clients/{{ client.id }}/modifier">Modifier</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5">Aucun client enregistré.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+
+{% endblock %}

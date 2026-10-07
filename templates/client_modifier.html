@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <h1>Modifier un client</h1>
+
+    {% if erreur %}
+    <p role="alert">{{ erreur }}</p>
+    {% endif %}
+
+    <form method="post" action="/clients/{{ client.id }}/modifier">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p>
+            <label for="nom">Nom obligatoire</label><br>
+            <input id="nom" name="nom" type="text" required
+                   value="{{ client.nom }}">
+        </p>
+
+        <p>
+            <label for="telephone">Téléphone</label><br>
+            <input id="telephone" name="telephone" type="tel"
+                   value="{{ client.telephone }}">
+        </p>
+
+        <p>
+            <label for="email">Email</label><br>
+            <input id="email" name="email" type="email"
+                   value="{{ client.email }}">
+        </p>
+
+        <p>
+            <label for="adresse">Adresse</label><br>
+            <textarea id="adresse" name="adresse"
+                      rows="3">{{ client.adresse }}</textarea>
+        </p>
+
+        <button type="submit">Enregistrer les modifications</button>
+        <a href="/clients">Annuler</a>
+    </form>
+
+{% endblock %}

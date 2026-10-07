@@ -1,0 +1,4 @@
+SQLCipher Community Edition : https://github.com/sqlcipher/sqlcipher
+Bindings Python sqlcipher3 : https://github.com/coleifer/sqlcipher3
+PySide6/Qt : https://code.qt.io/pyside/pyside-setup.git
+Les bibliothèques du runtime restent remplaçables séparément. Les notices fournies dans leurs répertoires dist-info et PySide6 sont conservées.

@@ -1,0 +1,348 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <p><a href="/">Retour à l’accueil</a></p>
+
+    <h1>Reprise des recettes et dépenses — {{ annee }}</h1>
+
+    <p>
+        <a href="/entreprise">1. Mon entreprise</a>
+        → 2. Reprise de l’année
+    </p>
+
+    <p>
+        Cette préparation est à faire au démarrage.
+        Elle permet de reprendre votre activité existante
+        avant d’enregistrer de nouvelles opérations.
+    </p>
+
+    <p>
+        Préparez vos relevés bancaires, vos factures et vos
+        justificatifs de caisse. Vérifiez les montants mois par mois.
+        Un prêt ou un transfert entre vos comptes n’est pas une recette
+        de vente.
+    </p>
+
+    <p>
+        Laissez un montant vide s’il reste à déterminer.
+        Saisissez 0 uniquement si le montant est réellement nul.
+        Les recettes sont saisies avant déduction des dépenses.
+    </p>
+
+    <p>
+        Cette saisie ne transmet aucune déclaration à la DICP.
+        Elle ne détermine pas encore votre régime fiscal.
+    </p>
+
+    <form method="get" action="/reprise">
+        <label for="annee">Année</label>
+        <input
+            id="annee"
+            name="annee"
+            type="number"
+            min="1900"
+            value="{{ annee }}"
+            required
+        >
+        <button type="submit">Afficher</button>
+    </form>
+
+    <h2>Période reprise</h2>
+
+    <form method="post" action="/reprise/periode">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+
+        <p>
+            <label for="date_fin_reprise">
+                Opérations reprises jusqu’au, jour inclus
+            </label><br>
+            <input
+                id="date_fin_reprise"
+                name="date_fin_reprise"
+                type="date"
+                value="{{ date_fin_reprise }}"
+                required
+            >
+        </p>
+
+        <p>
+            Pour le dernier mois, saisissez uniquement les montants
+            jusqu’à cette date. Les opérations suivantes seront
+            enregistrées séparément dans PatenteEasy.
+        </p>
+
+        <button type="submit">Enregistrer la date de fin</button>
+    </form>
+
+    <h2>Saisir ou remplacer les montants d’un mois</h2>
+
+    {% if erreur %}
+    <p role="alert">{{ erreur }}</p>
+    {% endif %}
+
+    <form method="post" action="/reprise">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+
+        <p>
+            <label for="mois">Mois</label><br>
+            <select id="mois" name="mois">
+                {% for item in mois_affiches %}
+                <option
+                    value="{{ item.numero }}"
+                    {% if saisie.get('mois', 1) == item.numero %}
+                    selected
+                    {% endif %}
+                >{{ item.nom }}</option>
+                {% endfor %}
+            </select>
+        </p>
+
+        <p>
+            <label for="recettes">Recettes encaissées en F CFP</label><br>
+            <input
+                id="recettes"
+                name="recettes"
+                type="text"
+                inputmode="decimal"
+                value="{{ saisie.get('recettes', '') }}"
+            >
+        </p>
+
+        <p>
+            <label for="depenses">Dépenses payées en F CFP</label><br>
+            <input
+                id="depenses"
+                name="depenses"
+                type="text"
+                inputmode="decimal"
+                value="{{ saisie.get('depenses', '') }}"
+            >
+        </p>
+
+        <p>
+            <label>
+                <input
+                    type="checkbox"
+                    name="verifie"
+                    value="true"
+                    {% if saisie.get('verifie', False) %}
+                    checked
+                    {% endif %}
+                >
+                J’ai vérifié les deux montants avec mes justificatifs,
+                y compris les montants égaux à zéro.
+            </label>
+        </p>
+
+        <p>
+            Enregistrer un mois déjà saisi remplace ses montants.
+            Saisissez le total du mois, pas seulement la différence.
+        </p>
+
+        <button type="submit">Enregistrer le mois</button>
+    </form>
+
+    <h2>Chiffre d’affaires de l’année précédente</h2>
+
+    <form method="post" action="/reprise/ca-n1">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+
+        <p>
+            <label for="ca_n1">
+                CA de {{ annee - 1 }} en F CFP
+            </label><br>
+
+            <input
+                id="ca_n1"
+                name="ca_n1"
+                type="text"
+                inputmode="decimal"
+                value="{{ ca_n1 }}"
+            >
+        </p>
+
+        <p>
+            Reportez le chiffre d’affaires figurant sur votre
+            déclaration pour cette année, sans déduire les dépenses.
+            Laissez vide si le montant reste inconnu.
+            Saisissez 0 uniquement si le chiffre d’affaires était nul.
+        </p>
+
+        <button type="submit">Enregistrer le CA précédent</button>
+    </form>
+
+    <h2>Option déclarée pour le régime réel de TVA</h2>
+
+    <form method="post" action="/reprise/option-reel">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+
+        <p>
+            Renseignez ce champ uniquement si une option pour le
+            régime réel reste en vigueur pour l’année affichée.
+            Reportez sa date d’effet d’après vos documents fiscaux.
+        </p>
+
+        <p>
+            <label for="option_reel">Date d’effet de l’option</label><br>
+            <input
+                id="option_reel"
+                name="option_reel"
+                type="date"
+                value="{{ option_reel }}"
+            >
+        </p>
+
+        <p>
+            Laissez vide si vous n’avez pas d’option en vigueur.
+            Un champ vide ne suffit pas à établir votre régime :
+            le chiffre d’affaires et votre historique fiscal
+            doivent également être examinés.
+        </p>
+
+        <button type="submit">Enregistrer l’option</button>
+    </form>
+
+    <details>
+        <summary>J’ai déjà dépassé le seuil de franchise cette année</summary>
+
+        <p>
+            Renseignez la date du dépassement constaté d’après
+            votre suivi fiscal. Sinon, laissez ce champ vide.
+        </p>
+
+        <form method="post" action="/reprise/depassement">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="annee" value="{{ annee }}">
+
+            <p>
+                <label for="depassement">Date du dépassement</label><br>
+                <input
+                    id="depassement"
+                    name="depassement"
+                    type="date"
+                    value="{{ depassement }}"
+                >
+            </p>
+
+            <button type="submit">Enregistrer</button>
+        </form>
+    </details>
+
+    {% if date_debut_tva %}
+    <p role="status">
+        <strong>
+            D’après le dépassement renseigné,
+            début de facturation de la TVA : {{ date_debut_tva }}.
+        </strong>
+    </p>
+    {% endif %}
+
+    <h2>Proposition de régime de TVA</h2>
+
+    <p><strong>{{ proposition_tva.titre }}</strong></p>
+    <p>{{ proposition_tva.message }}</p>
+
+    <p>
+        Cette proposition n’applique pas encore la TVA aux documents.
+        Le contrôle du dépassement en cours d’année reste à compléter.
+    </p>
+    <h2>Vérification de la reprise</h2>
+
+    <p role="status">{{ controle_reprise.message }}</p>
+
+    {% if controle_reprise.mois_manquants %}
+    <p>Mois à compléter ou à vérifier :</p>
+    <ul>
+        {% for item in mois_affiches %}
+            {% if item.numero in controle_reprise.mois_manquants %}
+            <li>{{ item.nom }}</li>
+            {% endif %}
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h2>Total des montants saisis</h2>
+
+    <p>
+        Recettes :
+        <strong>{{ total_recettes | centiemes }} F CFP</strong>
+    </p>
+
+    <p>
+        Dépenses :
+        <strong>{{ total_depenses | centiemes }} F CFP</strong>
+    </p>
+
+    {% if not controle_reprise.complete %}
+    <p>
+        Ces totaux sont provisoires :
+        la reprise n’est pas entièrement vérifiée.
+    </p>
+    {% endif %}
+
+    <h2>État de la reprise</h2>
+
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Mois</th>
+                    <th>Recettes</th>
+                    <th>Dépenses</th>
+                    <th>État</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in mois_affiches %}
+                {% set ligne = item.donnees %}
+                <tr>
+                    <td>{{ item.nom }}</td>
+
+                    <td>
+                        {% if ligne and ligne.recettes_centiemes is not none %}
+                        {{ ligne.recettes_centiemes | centiemes }} F CFP
+                        {% else %}
+                        Non renseignées
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if ligne and ligne.depenses_centiemes is not none %}
+                        {{ ligne.depenses_centiemes | centiemes }} F CFP
+                        {% else %}
+                        Non renseignées
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if ligne and ligne.verifie %}
+                        Vérifié
+                        {% else %}
+                        À compléter
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if controle_reprise.complete %}
+    <p role="status">
+        <strong>Votre reprise financière est renseignée et vérifiée.</strong>
+        Consultez également le message sur votre régime de TVA.
+    </p>
+    {% else %}
+    <p>
+        Pour terminer la reprise, complétez les éléments
+        indiqués dans la vérification.
+    </p>
+    {% endif %}
+
+    <p><a href="/">Revenir à l’accueil</a></p>
+
+{% endblock %}

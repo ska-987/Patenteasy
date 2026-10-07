@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <h1>Supprimer une ligne du devis</h1>
+
+    <p>
+        Voulez-vous retirer
+        <strong>{{ ligne.designation }}</strong>
+        de ce devis ?
+    </p>
+
+    <p>
+        Quantité : {{ ligne.quantite_centiemes | centiemes }}
+        {{ ligne.unite }}
+    </p>
+
+    <p>Cette action ne supprime aucun article du catalogue.</p>
+
+    <form
+        method="post"
+        action="/devis/{{ devis_id }}/lignes/{{ ligne.id }}/supprimer"
+    >
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Confirmer la suppression</button>
+    </form>
+
+    <p><a href="/devis/{{ devis_id }}">Annuler</a></p>
+
+{% endblock %}

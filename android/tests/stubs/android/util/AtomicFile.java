@@ -1,0 +1,3 @@
+package android.util;
+import java.io.*;import java.nio.file.*;
+public class AtomicFile{private final File f,tmp;public AtomicFile(File p){f=p;tmp=new File(p+".tmp");}public File getBaseFile(){return f;}public FileInputStream openRead()throws IOException{return new FileInputStream(f);}public FileOutputStream startWrite()throws IOException{return new FileOutputStream(tmp);}public void finishWrite(FileOutputStream out)throws IOException{out.close();Files.move(tmp.toPath(),f.toPath(),StandardCopyOption.REPLACE_EXISTING);}public void failWrite(FileOutputStream out)throws IOException{out.close();tmp.delete();}}

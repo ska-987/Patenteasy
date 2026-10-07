@@ -1,0 +1,10 @@
+PySide6==6.10.3
+reportlab==4.4.9
+cryptography==46.0.3
+# Dépendances de l'ancienne interface web conservée dans les sources pour compatibilité/tests.
+fastapi==0.142.2
+uvicorn==0.54.0
+Jinja2==3.1.6
+python-multipart==0.0.32
+certifi
+sqlcipher3==0.6.2

@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <p><a href="/">Retour à l’accueil</a></p>
+
+    <h1>Devis</h1>
+
+    <h2>Créer un brouillon</h2>
+
+    {% if erreur %}
+    <p role="alert">{{ erreur }}</p>
+    {% endif %}
+
+    {% if clients %}
+    <form method="post" action="/devis">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p>
+            <label for="client_id">Client</label><br>
+            <select id="client_id" name="client_id" required>
+                <option value="">Choisir un client</option>
+
+                {% for client in clients %}
+                <option
+                    value="{{ client.id }}"
+                    {% if saisie.get('client_id', '') == client.id|string %}
+                    selected
+                    {% endif %}
+                >{{ client.nom }}</option>
+                {% endfor %}
+            </select>
+        </p>
+
+        <p>
+            <label for="date_devis">Date du devis</label><br>
+            <input
+                id="date_devis"
+                name="date_devis"
+                type="date"
+                value="{{ saisie.get('date_devis', date_du_jour) }}"
+                required
+            >
+        </p>
+
+        <p>
+            <label for="objet">Objet du devis</label><br>
+            <input
+                id="objet"
+                name="objet"
+                value="{{ saisie.get('objet', '') }}"
+                placeholder="Exemple : réparation lave-linge"
+            >
+        </p>
+
+        <button type="submit">Créer un brouillon</button>
+    </form>
+    {% else %}
+    <p>
+        <a href="/clients">Ajoutez un client</a>
+        avant de créer un devis.
+    </p>
+    {% endif %}
+
+    <h2>Liste des devis</h2>
+
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Brouillon / ID</th>
+                    <th>Date</th>
+                    <th>Client</th>
+                    <th>Objet</th>
+                    <th>Statut</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for document in devis %}
+                <tr>
+                    <td>
+                        <a href="/devis/{{ document.id }}">
+                            Ouvrir {{ document.id }}
+                        </a>
+                    </td>
+                    <td>{{ document.date_devis }}</td>
+                    <td>{{ document.nom_client }}</td>
+                    <td>{{ document.objet }}</td>
+                    <td>{{ document.statut }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5">Aucun devis enregistré.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+{% endblock %}

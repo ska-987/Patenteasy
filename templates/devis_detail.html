@@ -1,0 +1,278 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <p><a href="/devis">Retour aux devis</a></p>
+
+    <h1>Devis — brouillon {{ devis.id }}</h1>
+    <p>Client : <strong>{{ devis.nom_client }}</strong></p>
+    <p>Date : {{ devis.date_devis }}</p>
+    <p>
+        Valable jusqu’au :
+        <strong>{{ date_fin_validite }}</strong>
+    </p>
+    <p>Objet : {{ devis.objet }}</p>
+    <p>Statut : {{ devis.statut }}</p>
+
+    {% if erreur %}
+    <p role="alert">{{ erreur }}</p>
+    {% endif %}
+
+    {% if devis.statut == 'brouillon' %}
+
+    <form method="post" action="/devis/{{ devis.id }}/validite">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p>
+            <label for="validite_jours">Validité en jours</label><br>
+            <input
+                id="validite_jours"
+                name="validite_jours"
+                type="number"
+                min="1"
+                max="365"
+                value="{{ validite_saisie }}"
+                required
+            >
+        </p>
+
+        <button type="submit">Enregistrer la validité</button>
+    </form>
+
+    <h2>Ajouter depuis le catalogue</h2>
+
+    {% if articles %}
+    <form method="post" action="/devis/{{ devis.id }}/catalogue">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p>
+            <label for="article_id">Article ou prestation</label><br>
+            <select id="article_id" name="article_id" required>
+                <option value="">Choisir un élément</option>
+                {% for article in articles %}
+                <option
+                    value="{{ article.id }}"
+                    {% if saisie.get('article_id', '') == article.id|string %}
+                    selected
+                    {% endif %}
+                >
+                    {{ article.reference }} — {{ article.designation }}
+                    — {{ article.prix_vente_centiemes | centiemes }} F CFP HT
+                </option>
+                {% endfor %}
+            </select>
+        </p>
+
+        <p>
+            <label for="quantite_catalogue">Quantité</label><br>
+            <input
+                id="quantite_catalogue"
+                name="quantite"
+                inputmode="decimal"
+                value="{{ saisie.get('quantite_catalogue', '1') }}"
+                required
+            >
+        </p>
+
+        <button type="submit">Ajouter au devis</button>
+    </form>
+    {% else %}
+    <p>Le catalogue est vide. Vous pouvez ajouter une ligne libre.</p>
+    {% endif %}
+
+   <details {% if 'designation' in saisie %}open{% endif %}>
+        <summary>Ajouter un élément absent du catalogue</summary>
+
+        <form method="post" action="/devis/{{ devis.id }}/ligne-libre">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <p>
+                <label for="designation">Désignation</label><br>
+                <input
+                    id="designation"
+                    name="designation"
+                    value="{{ saisie.get('designation', '') }}"
+                    required
+                >
+            </p>
+
+            <p>
+                <label for="unite">Unité</label><br>
+                <input
+                    id="unite"
+                    name="unite"
+                    value="{{ saisie.get('unite', 'pièce') }}"
+                    required
+                >
+            </p>
+
+            <p>
+                <label for="quantite_libre">Quantité</label><br>
+                <input
+                    id="quantite_libre"
+                    name="quantite"
+                    inputmode="decimal"
+                    value="{{ saisie.get('quantite_libre', '1') }}"
+                    required
+                >
+            </p>
+
+            <p>
+                <label for="prix_unitaire">Prix unitaire HT en F CFP</label><br>
+                <input
+                    id="prix_unitaire"
+                    name="prix_unitaire"
+                    inputmode="decimal"
+                    value="{{ saisie.get('prix_unitaire', '') }}"
+                    required
+                >
+            </p>
+
+            <p>
+                <label for="taxe">Taux de TVA à la vente en %</label><br>
+                <input
+                    id="taxe"
+                    name="taxe"
+                    inputmode="decimal"
+                    value="{{ saisie.get('taxe', '0') }}"
+                    required
+                >
+            </p>
+            <fieldset>
+                <legend>Réutiliser cet élément</legend>
+
+                <p>
+                    <label>
+                        <input
+                            type="checkbox"
+                            name="enregistrer_catalogue"
+                            value="true"
+                            {% if saisie.get('enregistrer_catalogue', False) %}
+                            checked
+                            {% endif %}
+                        >
+                        Enregistrer aussi dans le catalogue
+                    </label>
+                </p>
+
+                <p>
+                    Les champs suivants servent à créer l’article
+                    si la case est cochée.
+                </p>
+
+                <p>
+                    <label for="reference_libre">Référence</label><br>
+                    <input
+                        id="reference_libre"
+                        name="reference"
+                        value="{{ saisie.get('reference', '') }}"
+                    >
+                </p>
+
+                <p>
+                    <label for="type_article_libre">Type</label><br>
+                    <select id="type_article_libre" name="type_article">
+                        <option
+                            value="produit"
+                            {% if saisie.get('type_article', 'produit') == 'produit' %}
+                            selected
+                            {% endif %}
+                        >Produit</option>
+
+                        <option
+                            value="service"
+                            {% if saisie.get('type_article') == 'service' %}
+                            selected
+                            {% endif %}
+                        >Prestation</option>
+                    </select>
+                </p>
+
+                <p>
+                    Le prix de vente sera celui de cette ligne.
+                    Le prix d’achat sera initialisé à zéro,
+                    puis modifiable dans le catalogue.
+                </p>
+            </fieldset>
+
+            <button type="submit">Ajouter la ligne libre</button>
+        </form>
+    </details>
+
+    {% endif %}
+
+    <h2>Éléments du devis</h2>
+
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Référence</th>
+                    <th>Désignation</th>
+                    <th>Quantité</th>
+                    <th>Unité</th>
+                    <th>Prix unitaire HT</th>
+                    <th>Montant HT</th>
+                    <th>Taux TVA catalogue / saisi</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in lignes %}
+                <tr>
+                    <td>{{ ligne.reference }}</td>
+                    <td>{{ ligne.designation }}</td>
+                    <td>{{ ligne.quantite_centiemes | centiemes }}</td>
+                    <td>{{ ligne.unite }}</td>
+                    <td>
+                        {{ ligne.prix_unitaire_centiemes | centiemes }} F CFP
+                    </td>
+                    <td>
+                        {{ ligne.montant_ht_centiemes | centiemes }} F CFP
+                    </td>
+                    <td>{{ ligne.taxe_centiemes | centiemes }} %</td>
+                    <td>
+                        {% if devis.statut == 'brouillon' %}
+                        <a href="/devis/{{ devis.id }}/lignes/{{ ligne.id }}/modifier">
+                            Modifier
+                        </a>
+                        |
+                        <a href="/devis/{{ devis.id }}/lignes/{{ ligne.id }}/supprimer">
+                        Supprimer
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8">Aucune ligne ajoutée.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <h2>Total du devis</h2>
+
+    <p>{{ fiscalite.message }}</p>
+
+    <p>
+        Total HT :
+        <strong>{{ total_ht | centiemes }} F CFP</strong>
+    </p>
+
+    {% if total_tva is not none %}
+    <p>
+        TVA :
+        <strong>{{ total_tva | centiemes }} F CFP</strong>
+    </p>
+
+    <p>
+        Total TTC :
+        <strong>{{ total_ttc | centiemes }} F CFP</strong>
+    </p>
+    {% else %}
+    <p role="alert">
+        Le total à payer reste à déterminer :
+        le régime fiscal n’est pas confirmé.
+    </p>
+    {% endif %}
+
+    <p>Brouillon — document non prêt à l’envoi.</p>
+
+{% endblock %}

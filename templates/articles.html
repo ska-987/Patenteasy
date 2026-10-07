@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <p><a href="/">Retour à l’accueil</a></p>
+
+    <h1>Articles et prestations</h1>
+
+    <h2>Ajouter un article ou une prestation</h2>
+
+{% if erreur %}
+<p role="alert">{{ erreur }}</p>
+{% endif %}
+
+<form method="post" action="/articles">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <p>
+        <label for="reference">Référence</label><br>
+        <input
+            id="reference"
+            name="reference"
+            value="{{ saisie.get('reference', '') }}"
+            required
+        >
+    </p>
+
+    <p>
+        <label for="designation">Désignation</label><br>
+        <input
+            id="designation"
+            name="designation"
+            value="{{ saisie.get('designation', '') }}"
+            required
+        >
+    </p>
+
+    <p>
+        <label for="type_article">Type</label><br>
+        <select id="type_article" name="type_article">
+            <option
+                value="produit"
+                {% if saisie.get('type_article', 'produit') == 'produit' %}
+                selected
+                {% endif %}
+            >Produit</option>
+
+            <option
+                value="service"
+                {% if saisie.get('type_article') == 'service' %}
+                selected
+                {% endif %}
+            >Prestation</option>
+        </select>
+    </p>
+
+    <p>
+        <label for="unite">Unité : pièce, heure, m²…</label><br>
+        <input
+            id="unite"
+            name="unite"
+            value="{{ saisie.get('unite', 'pièce') }}"
+            required
+        >
+    </p>
+
+    <p>
+        <label for="prix_achat">Prix d’achat HT en F CFP</label><br>
+        <input
+            id="prix_achat"
+            name="prix_achat"
+            type="text"
+            inputmode="decimal"
+            value="{{ saisie.get('prix_achat', '0') }}"
+            required
+        >
+    </p>
+
+    <p>
+        <label for="prix_vente">Prix de vente HT en F CFP</label><br>
+        <input
+            id="prix_vente"
+            name="prix_vente"
+            type="text"
+            inputmode="decimal"
+            value="{{ saisie.get('prix_vente', '0') }}"
+            required
+        >
+    </p>
+
+    <p>
+        <label for="taxe">Taux de TVA à la vente en %</label><br>
+        <input
+            id="taxe"
+            name="taxe"
+            type="text"
+            inputmode="decimal"
+            value="{{ saisie.get('taxe', '0') }}"
+            required
+        >
+    </p>
+
+    <button type="submit">Enregistrer l’article</button>
+</form>
+
+<h2>Catalogue</h2>
+
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Référence</th>
+                    <th scope="col">Désignation</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Unité</th>
+                    <th scope="col">Achat HT</th>
+                    <th scope="col">Vente HT</th>
+                    <th scope="col">Taux TVA</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for article in articles %}
+                <tr>
+                    <td>{{ article.reference }}</td>
+                    <td>{{ article.designation }}</td>
+                    <td>{{ article.type_article }}</td>
+                    <td>{{ article.unite }}</td>
+                    <td>{{ article.prix_achat_centiemes | centiemes }} F CFP</td>
+                    <td>{{ article.prix_vente_centiemes | centiemes }} F CFP</td>
+                    <td>{{ article.taxe_centiemes | centiemes }} %</td>
+                    <td>
+                        <a href="/articles/{{ article.id }}/modifier">Modifier</a>
+                        |
+                         <a href="/articles/{{ article.id }}/supprimer">Supprimer</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8">Aucun article enregistré.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+{% endblock %}

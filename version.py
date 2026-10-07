@@ -1,0 +1,2 @@
+VERSION = "0.3.7"
+VERSION_ANDROID = "0.3.7"

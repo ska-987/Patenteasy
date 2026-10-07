@@ -1,41 +1,76 @@
-# Patenteasy
+# Patenteasy 0.3.7
 
-**Patenteasy** est une application de bureau Windows destinée à simplifier la gestion quotidienne d'une petite activité professionnelle.
+Application de gestion locale pour indépendants, artisans et petites entreprises.
 
-Le projet est développé et maintenu par **ska_987**.
+**Développeur :** ska_987  
+**Plateformes :** Windows 64 bits et Android 8+  
+**Licence :** GNU GPL v3 ou ultérieure
 
-## Objectifs
+## Éditions
 
-- proposer une interface de bureau simple et claire ;
-- centraliser les informations utiles à l'activité ;
-- fonctionner sans dépendre d'un navigateur intégré ;
-- conserver une base technique lisible et maintenable ;
-- privilégier le stockage local et la maîtrise des données par l'utilisateur.
+Patenteasy existe en deux éditions locales indépendantes :
 
-## Technologies
+- **Windows** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
+- **Android** : application hors ligne avec stockage local sur le téléphone.
 
-- Python
-- PySide6 / Qt
-- Windows
-- Git / GitHub
+Il n'y a pas de synchronisation automatique entre Windows et Android.
 
-## État du projet
+## Fonctions principales
 
-Patenteasy est actuellement **en développement**.
+Gestion de l'entreprise, clients, catalogue, devis, factures, paiements, avoirs, journal, sauvegardes et export de données. L'édition Windows propose également des fonctions plus avancées de stock, fiscalité et suivi.
 
-Le dépôt reste privé pendant la phase de développement et de stabilisation.
+## Architecture
 
-## Installation
+- `database.py` : données locales et accès SQLite ;
+- `gestion.py` : logique métier ;
+- `qt_app.py` : interface Windows PySide6/Qt ;
+- `application_windows.py` : lanceur Windows ;
+- `pdf_documents.py` : génération PDF ;
+- `mises_a_jour.py` : vérification et téléchargement de mises à jour via catalogue HTTPS signé ;
+- `android/` : sources Android, interface, stockage local et compilation APK.
 
-Les instructions d'installation et les versions distribuables seront ajoutées lorsque les builds seront prêts à être publiés.
+L'ancienne interface web reste dans les sources pour compatibilité et certains tests, mais l'application Windows utilise l'interface Qt.
+
+## Développement
+
+Python 3.10 ou ultérieur est requis pour travailler depuis les sources.
+
+Sous Windows :
+
+```text
+INSTALLER.cmd
+LANCER.cmd
+```
+
+Pour les tests Python :
+
+```powershell
+python -m pytest -q
+```
+
+Pour le modèle mobile :
+
+```powershell
+node --test tests/mobile_model.test.cjs
+```
+
+## Compilation
+
+Windows : `distribution/COMPILER_WINDOWS.cmd`
+
+Android : voir [android/COMPILER.md](android/COMPILER.md).
+
+Les clés de signature et mots de passe doivent rester hors du dépôt.
+
+## Documentation
+
+La documentation détaillée est regroupée dans [docs/](docs/) :
+
+- [Installation](docs/INSTALLATION.md)
+- [Bêta-test 0.3.7](docs/BETA_TEST_0.3.7.md)
+- [Architecture Qt](docs/ARCHITECTURE_QT.md)
+- [Nouveautés 0.3.7](docs/NOUVEAUTES_0.3.7.md)
 
 ## Licence
 
-Patenteasy est distribué sous licence **GNU General Public License v3.0 (GPL-3.0-only)**.
-
-Voir le fichier `LICENSE`.
-
-## Développeur
-
-**ska_987**  
-GitHub : **ska-987**
+Le code Patenteasy est distribué sous GNU GPL v3 ou ultérieure. Les composants tiers conservent leurs propres licences, stockées à proximité des composants concernés.

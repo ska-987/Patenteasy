@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <h1>Modifier une ligne du devis</h1>
+
+    {% if erreur %}
+    <p role="alert">{{ erreur }}</p>
+    {% endif %}
+
+    <form
+        method="post"
+        action="/devis/{{ devis_id }}/lignes/{{ ligne_id }}/modifier"
+    >
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p>
+            <label for="reference">Référence facultative</label><br>
+            <input
+                id="reference"
+                name="reference"
+                value="{{ saisie.get('reference', '') }}"
+            >
+        </p>
+
+        <p>
+            <label for="designation">Désignation</label><br>
+            <input
+                id="designation"
+                name="designation"
+                value="{{ saisie.get('designation', '') }}"
+                required
+            >
+        </p>
+
+        <p>
+            <label for="unite">Unité</label><br>
+            <input
+                id="unite"
+                name="unite"
+                value="{{ saisie.get('unite', '') }}"
+                required
+            >
+        </p>
+
+        <p>
+            <label for="quantite">Quantité</label><br>
+            <input
+                id="quantite"
+                name="quantite"
+                inputmode="decimal"
+                value="{{ saisie.get('quantite', '') }}"
+                required
+            >
+        </p>
+
+        <p>
+            <label for="prix_unitaire">Prix unitaire HT en F CFP</label><br>
+            <input
+                id="prix_unitaire"
+                name="prix_unitaire"
+                inputmode="decimal"
+                value="{{ saisie.get('prix_unitaire', '') }}"
+                required
+            >
+        </p>
+
+        <p>
+            <label for="taxe">Taux de TVA à la vente en %</label><br>
+            <input
+                id="taxe"
+                name="taxe"
+                inputmode="decimal"
+                value="{{ saisie.get('taxe', '') }}"
+                required
+            >
+        </p>
+
+        <button type="submit">Enregistrer les modifications</button>
+    </form>
+
+    <p><a href="/devis/{{ devis_id }}">Annuler</a></p>
+
+{% endblock %}
