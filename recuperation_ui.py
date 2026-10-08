@@ -25,13 +25,13 @@ class RecuperationDialog(FormDialog):
         self.check=button(tr('Vérifier la sauvegarde'),self.verifier);self.form.addRow(self.check)
         self.review=QLabel();self.review.setWordWrap(True);self.form.addRow(self.review)
         self.buttons.accepted.disconnect();self.buttons.accepted.connect(self.restaurer)
-        self.buttons.button(self.buttons.StandardButton.Ok).setText(tr('Restaurer sur ce PC'));self.buttons.button(self.buttons.StandardButton.Ok).setEnabled(False)
+        self.buttons.button(self.buttons.StandardButton.Save).setText(tr('Restaurer sur ce PC'));self.buttons.button(self.buttons.StandardButton.Save).setEnabled(False)
         self.mode.currentIndexChanged.connect(self.invalidate)
         for entry in (self.secret,self.ident,self.new,self.confirm):entry.textChanged.connect(self.invalidate)
         self.old_label.hide();self.old.hide();self.old_button.hide();self.invalidate()
 
     def invalidate(self,*_):
-        self.preparation=None;self.review.clear();self.buttons.button(self.buttons.StandardButton.Ok).setEnabled(False)
+        self.preparation=None;self.review.clear();self.buttons.button(self.buttons.StandardButton.Save).setEnabled(False)
         code=self.mode.currentData()=='code'
         for widget in (self.new,self.new_label,self.confirm,self.confirm_label):widget.setVisible(code)
 
@@ -55,7 +55,7 @@ class RecuperationDialog(FormDialog):
                 if self.new.text()!=self.confirm.text():raise ValueError(tr('Les deux mots de passe sont différents.'))
             resume=verifier(self.preparation,self.comptes.base.chemin.parent)
             self.review.setText(f"Sauvegarde vérifiée : {resume['entreprise']}\n{resume['clients']} clients · {resume['devis']} devis · {resume['factures']} factures\nLes comptes et les réglages seront récupérés.")
-            self.buttons.button(self.buttons.StandardButton.Ok).setEnabled(True)
+            self.buttons.button(self.buttons.StandardButton.Save).setEnabled(True)
         except Exception as exc:self.preparation=None;show_error(self,exc)
         finally:QApplication.restoreOverrideCursor()
 

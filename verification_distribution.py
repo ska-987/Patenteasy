@@ -69,7 +69,19 @@ def verifier(rapport):
             protection.verrouiller()
             coffre.ACTIF = None
             nouveau = GestionComptes(db.BaseDonnees(Path(dossier)/'nouveau-pc'/'base.db'))
-            nouveau.restaurer_nouveau_pc(preparation)
+            from recuperation_ui import RecuperationDialog
+            import recuperation_ui
+            def erreur_ui(parent, erreur): raise erreur
+            recuperation_ui.show_error = erreur_ui
+            recuperation = RecuperationDialog(nouveau)
+            recuperation.file.setText(str(sauvegarde))
+            recuperation.secret.setText('VerificationLocale-040!')
+            recuperation.verifier()
+            assert recuperation.buttons.button(recuperation.buttons.StandardButton.Save).isEnabled()
+            recuperation.restaurer()
+            assert recuperation.compte['role'] == 'admin'
+            recuperation.close(); recuperation.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             c = nouveau.coffre.ouvrir()
             assert c.execute('SELECT count(*) FROM devis').fetchone()[0] == 2
             c.close(); nouveau.coffre.verrouiller()

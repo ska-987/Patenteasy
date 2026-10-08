@@ -60,13 +60,22 @@ def test_general_sans_identifiant_ni_choix_fiscal(base):
 
 
 def test_migration_ancien_profil_preserve_montants(base):
-    # The legacy schema has XPF, but no generic regional columns.
+    # Preserve real historical amounts and a frozen document from the legacy schema.
+    d=devis();db.ajouter_ligne_devis(d,'Historical item','unit','1','1000','16')
+    g.confirmer_fiscalite(2026,'reel');g.emettre_devis(d)
+    old=g.calculer(d)
+    for champ in regional.DEFAULTS:old['entreprise'].pop(champ,None)
     with g.connexion() as c:
+        c.execute('UPDATE devis SET instantane=? WHERE id=?',(json.dumps(old),d))
         for champ in regional.DEFAULTS:c.execute(f'ALTER TABLE entreprise DROP COLUMN {champ}')
     g.migrer()
     e=db.obtenir_entreprise()
     assert (e['pays'],e['devise'],e['decimales'],e['libelle_identifiant'])==('PF','XPF',2,'N° TAHITI')
     assert db.convertir_montant('1000')==100000
+    assert g.calculer(d)==old and old['ttc']==116000
+    assert regional.configuration(old['entreprise'])['devise']=='XPF'
+    from pdf_documents import generer
+    assert generer(old).startswith(b'%PDF')
 
 
 @pytest.mark.parametrize('fmt,chiffres,iso',[('MM/dd/yy','100826','2026-10-08'),('yyyy-MM-dd','20261008','2026-10-08')])
@@ -133,3 +142,28 @@ def test_ancienne_sauvegarde_et_corruption(tmp_path):
     with pytest.raises(ValueError):new.restaurer_nouveau_pc(prep,'new administrator password','wrong-code')
     assert not new.base.chemin.exists() and not new.coffre.metadata.exists()
     owner.coffre.verrouiller();coffre.ACTIF=None
+
+
+@pytest.mark.parametrize('mode',['mot_de_passe','code'])
+def test_parcours_recuperation_depuis_ecran(tmp_path,app,mode,monkeypatch):
+    from recuperation_ui import RecuperationDialog
+    import recuperation_ui
+    owner,p=backup(tmp_path);code=owner.coffre.code_recuperation
+    owner.coffre.verrouiller();coffre.ACTIF=None
+    new=GestionComptes(db.BaseDonnees(tmp_path/'new-ui'/'base.db'))
+    def fail(parent,exc):raise exc
+    monkeypatch.setattr(recuperation_ui,'show_error',fail)
+    dialog=RecuperationDialog(new)
+    button=dialog.buttons.button(dialog.buttons.StandardButton.Save)
+    assert not button.isEnabled()
+    dialog.file.setText(str(p));dialog.mode.setCurrentIndex(dialog.mode.findData(mode))
+    dialog.secret.setText(code if mode=='code' else 'administrator password')
+    if mode=='code':
+        dialog.new.setText('new administrator password');dialog.confirm.setText('new administrator password')
+    dialog.check.click()
+    assert dialog.preparation and button.isEnabled()
+    button.click()
+    assert dialog.compte['identifiant']=='owner'
+    assert dialog.result()==dialog.DialogCode.Accepted
+    assert not dialog.secret.text()
+    new.coffre.verrouiller();coffre.ACTIF=None
