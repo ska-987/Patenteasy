@@ -80,7 +80,7 @@ def verifier(rapport):
                 QMessageBox.exec = lambda _: QMessageBox.StandardButton.Yes
                 QFileDialog.exec = lambda _: QDialog.DialogCode.Accepted
                 exporte = exports_pdf.enregistrer(facture_ui, generer(g.document(facture)['contenu']), 'facture.pdf')
-                assert exporte.parent == Path(dossier)/'bureau'/'Patenteasy'
+                assert exporte.parent.resolve() == (Path(dossier)/'bureau'/'Patenteasy').resolve()
                 assert exporte.read_bytes().startswith(b'%PDF')
                 assert exports_pdf.choisir_dossier(facture_ui) == exporte.parent
             finally:
