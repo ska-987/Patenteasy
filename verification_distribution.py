@@ -52,7 +52,18 @@ def verifier(rapport):
             g.decision_devis(devis, "accepte")
             facture = g.creer_facture(devis, jour, jour)
             instantane = g.document(facture)
-            g.regler_entreprise(30, 'Conditions ajoutées après émission', 'Paiement convenu', '', '', '0', '')
+            from PySide6.QtWidgets import QStackedWidget, QWidget
+            parcours = QStackedWidget()
+            reglages_conditions = SettingsPage();reglages_conditions.refresh()
+            parcours.addWidget(reglages_conditions);parcours.addWidget(QWidget())
+            parcours.show();app.processEvents()
+            reglages_conditions.terms.setPlainText('Conditions ajoutées après émission')
+            reglages_conditions.payment.setPlainText('Paiement convenu')
+            parcours.setCurrentIndex(1);app.processEvents()
+            assert g.conditions_documents()['conditions_reglement'] == 'Paiement convenu'
+            facture_ui = InvoiceDialog(facture)
+            assert facture_ui.conditions.fields['conditions_reglement'][1].text() == 'Paiement convenu'
+            assert not facture_ui.conditions.isHidden()
             fichier.write_bytes(generer(g.document(facture)['contenu']))
             controle_conditions = QPdfDocument()
             assert controle_conditions.load(str(fichier)) == QPdfDocument.Error.None_
@@ -63,7 +74,8 @@ def verifier(rapport):
             controle_conditions.close()
             g.regler_entreprise(30, '', '', '', '', '0', '')
             assert g.document(facture) == instantane
-            facture_ui = InvoiceDialog(facture)
+            facture_ui.refresh()
+            parcours.close();parcours.deleteLater()
             assert callable(facture_ui.preview_pdf) and callable(facture_ui.export_pdf)
             import qt_app
             from PySide6.QtCore import QTimer
@@ -140,7 +152,8 @@ def verifier(rapport):
                         'pdf': True, 'apercu_pdf': True, 'taxe': True, 'documents': True,
                         'profil_general': True, 'sauvegarde_nouveau_pc': True, 'ouverture_facture': True,
                         'exports_pdf_bureau': True, 'conditions_reglages': True,
-                        'conditions_documents_existants': True}
+                        'conditions_documents_existants': True, 'conditions_enregistrement_auto': True,
+                        'conditions_affichees_facture': True}
     except Exception:
         resultat['erreur'] = traceback.format_exc()
     Path(rapport).write_text(json.dumps(resultat, ensure_ascii=False, indent=2), encoding='utf-8')

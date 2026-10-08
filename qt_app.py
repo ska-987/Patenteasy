@@ -1021,6 +1021,39 @@ class ArticlesPage(Page):
             except Exception as exc: show_error(self, exc)
 
 
+class DocumentConditions(QGroupBox):
+    """Conditions actuelles, consultables dans le document, éditables en Réglages."""
+    def __init__(self, parent=None):
+        super().__init__(tr("Conditions et mentions"), parent)
+        layout = QVBoxLayout(self)
+        note = QLabel(tr("Création et modification uniquement dans Réglages."))
+        note.setWordWrap(True);layout.addWidget(note)
+        self.fields = {}
+        for titre, champ in [('Conditions de vente', 'conditions_vente'),
+                             ('Conditions de règlement', 'conditions_reglement'),
+                             ('Mentions complémentaires', 'mention_complementaire')]:
+            heading = QLabel(tr(titre));heading.setObjectName('lead')
+            texte = QLabel();texte.setWordWrap(True)
+            texte.setTextFormat(Qt.TextFormat.PlainText)
+            texte.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
+            layout.addWidget(heading);layout.addWidget(texte)
+            self.fields[champ] = (heading, texte)
+
+    def refresh(self, conditions=None):
+        if conditions is None: conditions = g.conditions_documents()
+        for champ, (heading, texte) in self.fields.items():
+            valeur = conditions.get(champ, '')
+            texte.setText(valeur)
+            heading.setVisible(bool(valeur));texte.setVisible(bool(valeur))
+        self.setVisible(any(conditions.values()))
+
+    @staticmethod
+    def actualiser_tous():
+        conditions = g.conditions_documents()
+        for widget in QApplication.allWidgets():
+            if isinstance(widget, DocumentConditions): widget.refresh(conditions)
+
+
 class QuoteEditorDialog(QDialog):
     changed = Signal()
 
@@ -1085,6 +1118,8 @@ class QuoteEditorDialog(QDialog):
             actions.addWidget(b, i // 4, i % 4)
         outer.addWidget(close)
         root.addLayout(actions)
+        self.conditions = DocumentConditions(self)
+        root.addWidget(self.conditions)
         conditions_note = QLabel(tr("Les conditions facultatives se définissent dans Réglages et s’affichent en bas du PDF."))
         conditions_note.setWordWrap(True)
         root.addWidget(conditions_note)
@@ -1139,6 +1174,7 @@ class QuoteEditorDialog(QDialog):
         else:
             total += "   ·   "+tr("Total")+" : "+fcfp(s["ttc"])+" · "+tr("Sans taxe calculée")
         self.total.setText(total)
+        self.conditions.refresh()
         draft = d["statut"] == "brouillon"
         sent = d["statut"] == "envoye"
         accepted = d["statut"] == "accepte"
@@ -1330,6 +1366,8 @@ class InvoiceDialog(QDialog):
         self.lines = QTableWidget(); configure_table(self.lines, [tr("Référence"), tr("Désignation"), tr("Quantité"), tr("Prix HT"), tr("Total HT")]); root.addWidget(self.lines, 1)
         self.payments = QTableWidget(); configure_table(self.payments, [tr("Date"), tr("Montant"), tr("Moyen"), tr("Référence")])
         box = QGroupBox(tr("Paiements enregistrés")); boxl = QVBoxLayout(box); boxl.addWidget(self.payments); root.addWidget(box)
+        self.conditions = DocumentConditions(self)
+        root.addWidget(self.conditions)
         bar = QGridLayout()
         self.pdf_btn = button(tr("Aperçu PDF"), self.preview_pdf, secondary=True)
         self.export_btn = button(tr("Exporter le PDF"), self.export_pdf, secondary=True)
@@ -1348,6 +1386,7 @@ class InvoiceDialog(QDialog):
         self.metrics.setText(f'Total {fcfp(d["total_centiemes"])} · Réglé {fcfp(d["paye"])} · Avoirs {fcfp(d["credite"])}' + (f' · Reste {fcfp(d["reste"])}' if d["type"] == "facture" else ""))
         fill_table(self.lines, [[x.get("reference", ""), x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["prix_unitaire_centiemes"]), fcfp(x["ht"])] for x in c["lignes"]])
         fill_table(self.payments, [[x["date_paiement"], fcfp(x["montant_centiemes"]), x["mode"], x["reference"]] for x in d["paiements"]])
+        self.conditions.refresh()
         self.pay_btn.setVisible(d["type"] == "facture" and d["reste"] > 0)
         self.credit_btn.setVisible(d["type"] == "facture" and d["credite"] < d["total_centiemes"])
         self.refund_btn.setVisible(d.get("a_rembourser", 0) > 0)
@@ -1680,18 +1719,59 @@ class FiscalPage(Page):
 class SettingsPage(Page):
     def __init__(self,parent=None):
         super().__init__(tr("Préférences"),tr("Réglages"),tr("Personnalisez vos documents et votre suivi."),parent)
+        self._conditions_loading = True
+        self._conditions_dirty = False
+        self.conditions_timer = QTimer(self);self.conditions_timer.setSingleShot(True)
+        self.conditions_timer.setInterval(300);self.conditions_timer.timeout.connect(self.save_conditions)
         docs=QGroupBox(tr("Documents"));f=QFormLayout(docs);self.validity=QSpinBox();self.validity.setRange(1,365);self.terms=QTextEdit();self.payment=QTextEdit();self.note=QTextEdit();
-        explication = QLabel(tr("Conditions facultatives : affichées en bas des devis et factures. Les changements s’appliquent aussi aux documents existants lors du prochain aperçu ou export PDF. Laissez un champ vide pour ne pas l’afficher."))
+        explication = QLabel(tr("Conditions facultatives enregistrées automatiquement. Elles s’affichent dans les devis et factures existants et en bas du prochain PDF. Laissez un champ vide pour ne pas l’afficher."))
         explication.setWordWrap(True);f.addRow(explication)
         for field in (self.terms,self.payment,self.note):
             field.setFixedHeight(90);field.setPlaceholderText(tr("Facultatif — texte à afficher sur les documents"))
+            field.textChanged.connect(self.conditions_edited)
         f.addRow(tr("Validité des devis · jours"),self.validity);f.addRow(tr("Conditions de vente (facultatif)"),self.terms);f.addRow(tr("Règlement (facultatif)"),self.payment);f.addRow(tr("Mentions complémentaires"),self.note);self.layout.addWidget(docs)
+        self.conditions_status = QLabel();self.conditions_status.setWordWrap(True);f.addRow(self.conditions_status)
         tva=QGroupBox(tr("Taxe et trésorerie"));tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem(tr("Non renseignée / sans déclaration"),"");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=DateInput(optional=True);self.balance=QLineEdit();tf.addRow(tr("Fréquence des déclarations"),self.period);tf.addRow(tr("Date du solde de départ · " + regional.FORMATS[regional.configuration()["format_date"]]),self.balance_date);tf.addRow(tr("Solde banque + caisse · " + regional.configuration()["devise"] + ""),self.balance);self.layout.addWidget(tva);self.layout.addWidget(button(tr("Enregistrer les réglages"),self.save))
         actions=QHBoxLayout();actions.addWidget(button(tr("Sauvegarder la base"),lambda:backup_database(self)));actions.addWidget(button(tr("Exporter le journal CSV"),lambda:export_journal_csv(self),secondary=True));actions.addStretch();self.layout.addLayout(actions);self.layout.addStretch()
+        self._conditions_loading = False
+
+    def conditions_edited(self):
+        if self._conditions_loading: return
+        self._conditions_dirty = True
+        self.conditions_status.setText(tr("Enregistrement…"))
+        self.conditions_timer.start()
+
+    def save_conditions(self):
+        self.conditions_timer.stop()
+        if not self._conditions_dirty: return True
+        try:
+            g.regler_conditions_documents(self.terms.toPlainText(), self.payment.toPlainText(), self.note.toPlainText())
+            self._conditions_dirty = False
+            self.conditions_status.setText(tr("Conditions enregistrées automatiquement."))
+            DocumentConditions.actualiser_tous()
+            return True
+        except Exception as exc:
+            self.conditions_status.setText(tr("Conditions non enregistrées : ") + str(exc))
+            return False
+
+    def hideEvent(self, event):
+        self.save_conditions()
+        super().hideEvent(event)
+
+    def closeEvent(self, event):
+        if not self.save_conditions(): event.ignore();return
+        super().closeEvent(event)
+
     def refresh(self):
+        if not self.save_conditions(): return
+        self._conditions_loading = True
         e=db.obtenir_entreprise() or {};self.validity.setValue(e.get('validite_devis_jours',30));self.terms.setPlainText(e.get('conditions_vente',''));self.payment.setPlainText(e.get('conditions_reglement',''));self.note.setPlainText(e.get('mention_complementaire',''));self.period.setCurrentIndex(max(0,self.period.findData(e.get('periodicite_tva',''))));self.balance_date.setDate(qdate_from_iso(e['date_solde_depart'])) if e.get('date_solde_depart') else self.balance_date.clear();self.balance.setText(money_text(e.get('solde_depart_centiemes',0)))
+        self._conditions_loading = False
+        self.conditions_status.setText(tr("Conditions enregistrées automatiquement."))
     def save(self):
-        try:g.regler_entreprise(self.validity.value(),self.terms.toPlainText(),self.payment.toPlainText(),self.note.toPlainText(),self.period.currentData(),self.balance.text(),iso_date(self.balance_date));self.refresh();show_info(self,tr("Réglages enregistrés."))
+        if not self.save_conditions():
+            show_error(self, tr("Les conditions n’ont pas pu être enregistrées. Votre saisie est conservée dans Réglages."));return
+        try:g.regler_entreprise(self.validity.value(),self.terms.toPlainText(),self.payment.toPlainText(),self.note.toPlainText(),self.period.currentData(),self.balance.text(),iso_date(self.balance_date));self.refresh();DocumentConditions.actualiser_tous();show_info(self,tr("Réglages enregistrés."))
         except Exception as exc:show_error(self,exc)
 
 def demander_verification(parent):

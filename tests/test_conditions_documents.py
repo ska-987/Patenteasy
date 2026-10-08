@@ -4,7 +4,9 @@ import json
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import pytest
-from PySide6.QtWidgets import QApplication, QTextEdit
+from PySide6.QtWidgets import QApplication, QTextEdit, QStackedWidget, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtPdf import QPdfDocument
 import database as db
 import gestion as g
@@ -149,3 +151,86 @@ def test_conditions_libres_et_titres_traduits(app, documents, tmp_path):
     assert 'Métier libre < texte & données >' in texte
     assert 'Additional notes' not in texte
     lecture.close()
+
+
+def test_saisie_navigation_ancienne_facture_et_nouvel_export(app, documents, tmp_path, monkeypatch):
+    devis, facture = documents
+    avant = g.document(facture)
+    stack = QStackedWidget()
+    settings = ui.SettingsPage();settings.refresh()
+    autre = QWidget();stack.addWidget(settings);stack.addWidget(autre)
+    stack.resize(900, 500);stack.show();app.processEvents()
+    QTest.keyClicks(settings.payment, 'Paiement a reception par virement')
+    # Départ immédiat, sans attendre le délai et sans cliquer sur Enregistrer.
+    stack.setCurrentWidget(autre);app.processEvents()
+    assert not settings.conditions_timer.isActive()
+    assert g.conditions_documents()['conditions_reglement'] == 'Paiement a reception par virement'
+    reopened = ui.SettingsPage();reopened.refresh()
+    assert reopened.payment.toPlainText() == 'Paiement a reception par virement'
+    invoice = ui.InvoiceDialog(facture);invoice.show();app.processEvents()
+    assert invoice.conditions.isVisible()
+    heading, texte = invoice.conditions.fields['conditions_reglement']
+    assert heading.isVisible() and texte.text() == reopened.payment.toPlainText()
+    assert texte.textFormat() == Qt.TextFormat.PlainText
+    assert not invoice.findChildren(QTextEdit)
+    quote = ui.QuoteEditorDialog(devis);quote.show();app.processEvents()
+    assert quote.conditions.fields['conditions_reglement'][1].text() == texte.text()
+    pdfs = []
+    monkeypatch.setattr(ui, 'save_pdf', lambda parent, data, name: pdfs.append(data))
+    monkeypatch.setattr(ui, 'show_error', lambda parent, exc: pytest.fail(str(exc)))
+    invoice.export_btn.click()
+    lecture, textes = textes_pdf(pdfs[0], tmp_path / 'nouvel-export.pdf')
+    assert reopened.payment.toPlainText() in textes[-1]
+    assert 'Conditions de règlement' in textes[-1]
+    assert g.document(facture) == avant
+    lecture.close();invoice.close();quote.close();reopened.close();stack.close()
+
+
+def test_conditions_auto_enregistrees_meme_autres_reglages_incomplets(app, documents):
+    avant = db.obtenir_entreprise()
+    settings = ui.SettingsPage();settings.refresh()
+    settings.balance.setText('montant incomplet')
+    settings.balance_date.entry.setText('08/10/')
+    settings.payment.setPlainText('Règlement indépendant du solde')
+    QTest.qWait(settings.conditions_timer.interval() + 100)
+    assert not settings._conditions_dirty
+    assert g.conditions_documents()['conditions_reglement'] == 'Règlement indépendant du solde'
+    maintenant = db.obtenir_entreprise()
+    for champ in ('solde_depart_centiemes', 'date_solde_depart', 'validite_devis_jours', 'periodicite_tva'):
+        assert maintenant[champ] == avant[champ]
+    settings.close()
+
+
+def test_modification_et_effacement_actualisent_document_deja_ouvert(app, documents):
+    devis, facture = documents
+    invoice = ui.InvoiceDialog(facture);invoice.show()
+    quote = ui.QuoteEditorDialog(devis);quote.show()
+    settings = ui.SettingsPage();settings.refresh()
+    assert not invoice.conditions.isVisible() and not quote.conditions.isVisible()
+    for contenu in ('Texte initial <libre>', 'Texte modifié'):
+        settings.payment.setPlainText(contenu)
+        assert settings.save_conditions()
+        for doc in (invoice, quote):
+            assert doc.conditions.isVisible()
+            assert doc.conditions.fields['conditions_reglement'][1].text() == contenu
+    settings.payment.clear();assert settings.save_conditions()
+    assert not invoice.conditions.isVisible() and not quote.conditions.isVisible()
+    assert g.conditions_documents()['conditions_reglement'] == ''
+    invoice.close();quote.close();settings.close()
+
+
+def test_erreur_enregistrement_affichee_sans_perdre_saisie(app, documents, monkeypatch):
+    settings = ui.SettingsPage();settings.refresh()
+    def echec(*args): raise OSError('Disque indisponible')
+    originale = g.regler_conditions_documents
+    monkeypatch.setattr(g, 'regler_conditions_documents', echec)
+    settings.payment.setPlainText('Texte à conserver')
+    assert not settings.save_conditions()
+    assert settings._conditions_dirty
+    assert 'Conditions non enregistrées' in settings.conditions_status.text()
+    settings.refresh()
+    assert settings.payment.toPlainText() == 'Texte à conserver'
+    monkeypatch.setattr(g, 'regler_conditions_documents', originale)
+    assert settings.save_conditions()
+    assert g.conditions_documents()['conditions_reglement'] == 'Texte à conserver'
+    settings.close()

@@ -134,6 +134,12 @@ class GestionDocuments:
         return {champ: e.get(champ, '').strip() for champ in
                 ('conditions_vente', 'conditions_reglement', 'mention_complementaire')}
 
+    def regler_conditions_documents(self, vente, reglement, mention):
+        """Enregistre les textes des Réglages sans dépendre des autres champs."""
+        with self.connexion() as c:
+            c.execute("""UPDATE entreprise SET conditions_vente=?,conditions_reglement=?,
+            mention_complementaire=? WHERE id=1""", (vente.strip(), reglement.strip(), mention.strip()))
+
     def regler_entreprise(self, validite, vente, reglement, mention, periodicite, solde, date_solde):
         if periodicite not in ('', 'mensuelle', 'trimestrielle'):
             raise ValueError('Périodicité invalide.')
