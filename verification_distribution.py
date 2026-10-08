@@ -20,7 +20,7 @@ def verifier(rapport):
             import database as db
             import gestion as g
             from pdf_documents import generer
-            from qt_app import FiscalPage, SettingsPage, QuoteEditorDialog, InvoiceDialog
+            from qt_app import FiscalPage, SettingsPage, QuoteEditorDialog, InvoiceDialog, QuoteCreateDialog, ClientDialog
             from version import VERSION
             app = QApplication.instance() or QApplication([])
             protection = Coffre(db.DB_PATH)
@@ -91,6 +91,20 @@ def verifier(rapport):
                 QTimer.singleShot(0, fermer_apercu)
                 facture_ui.preview_pdf()
                 assert visites == [True]
+                creation_devis = QuoteCreateDialog()
+                creation_devis.objet.setText('Objet à conserver')
+                def creer_nouveau_client():
+                    modal = app.activeModalWidget()
+                    assert isinstance(modal, ClientDialog)
+                    modal.nom.setText('Client créé depuis le devis')
+                    modal.tel.setText('+123 456 789')
+                    modal.accept()
+                QTimer.singleShot(0, creer_nouveau_client)
+                creation_devis.new_client_btn.click()
+                nouveau_client = creation_devis.client.currentData()
+                assert db.obtenir_client(nouveau_client)['nom'] == 'Client créé depuis le devis'
+                assert creation_devis.objet.text() == 'Objet à conserver'
+                creation_devis.close();creation_devis.deleteLater()
             finally:
                 qt_app.show_error = originale_erreur
             import exports_pdf
@@ -113,6 +127,8 @@ def verifier(rapport):
             ecrans = [FiscalPage(), SettingsPage(), QuoteEditorDialog(autre), facture_ui]
             from PySide6.QtWidgets import QTextEdit
             assert not ecrans[2].findChildren(QTextEdit)
+            assert ecrans[2].client.findData(nouveau_client) >= 0
+            assert not ecrans[2].new_client_btn.isHidden()
             for ecran in ecrans:
                 ecran.resize(900, 500); ecran.show(); app.processEvents(); ecran.close(); ecran.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -153,7 +169,7 @@ def verifier(rapport):
                         'profil_general': True, 'sauvegarde_nouveau_pc': True, 'ouverture_facture': True,
                         'exports_pdf_bureau': True, 'conditions_reglages': True,
                         'conditions_documents_existants': True, 'conditions_enregistrement_auto': True,
-                        'conditions_affichees_facture': True}
+                        'conditions_affichees_facture': True, 'nouveau_client_depuis_devis': True}
     except Exception:
         resultat['erreur'] = traceback.format_exc()
     Path(rapport).write_text(json.dumps(resultat, ensure_ascii=False, indent=2), encoding='utf-8')

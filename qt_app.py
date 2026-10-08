@@ -541,6 +541,8 @@ class FormDialog(QDialog):
 class ClientDialog(FormDialog):
     def __init__(self, data=None, parent=None):
         super().__init__(tr("Client"), parent)
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("Enregistrer"))
+        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("Annuler"))
         data = data or {}
         self.nom = QLineEdit(data.get("nom", ""))
         self.tel = QLineEdit(data.get("telephone", ""))
@@ -553,6 +555,33 @@ class ClientDialog(FormDialog):
 
     def values(self):
         return self.nom.text(), self.tel.text(), self.email.text(), self.adresse.toPlainText()
+
+
+class ClientChoice(QWidget):
+    """Choisir un client ou le créer sans quitter le devis."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self);layout.setContentsMargins(0, 0, 0, 0)
+        self.combo = QComboBox()
+        self.combo.setPlaceholderText(tr("Choisissez un client ou créez-en un."))
+        for client in db.lister_clients(): self.combo.addItem(client['nom'], client['id'])
+        self.add_btn = button(tr("Nouveau client"), self.create_client, secondary=True)
+        layout.addWidget(self.combo, 1);layout.addWidget(self.add_btn)
+
+    def create_client(self):
+        dialogue = ClientDialog(parent=self)
+        dialogue.setWindowTitle(tr("Nouveau client"))
+        # En cas de saisie invalide, conserver le formulaire et ses coordonnées.
+        while dialogue.exec() == QDialog.DialogCode.Accepted:
+            try:
+                identifiant = db.ajouter_client(*dialogue.values())
+            except Exception as exc:
+                show_error(self, exc)
+                continue
+            self.combo.clear()
+            for client in db.lister_clients(): self.combo.addItem(client['nom'], client['id'])
+            self.combo.setCurrentIndex(self.combo.findData(identifiant))
+            break
 
 
 class ArticleDialog(FormDialog):
@@ -607,14 +636,21 @@ class OperationDialog(FormDialog):
 class QuoteCreateDialog(FormDialog):
     def __init__(self, parent=None):
         super().__init__(tr("Nouveau devis"), parent)
-        self.client = QComboBox()
-        for item in db.lister_clients():
-            self.client.addItem(item["nom"], item["id"])
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("Créer un devis"))
+        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr("Annuler"))
+        self.client_choice = ClientChoice(self)
+        self.client = self.client_choice.combo
+        self.new_client_btn = self.client_choice.add_btn
         self.date = make_date(g.aujourd_hui().isoformat())
         self.objet = QLineEdit()
-        self.form.addRow(tr("Client"), self.client)
+        self.form.addRow(tr("Client"), self.client_choice)
         self.form.addRow(tr("Date"), self.date)
         self.form.addRow(tr("Objet"), self.objet)
+        self.client.currentIndexChanged.connect(self.client_changed)
+        self.client_changed()
+
+    def client_changed(self, *_):
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(self.client.currentData() is not None)
 
     def values(self):
         return self.client.currentData(), iso_date(self.date), self.objet.text()
@@ -1079,13 +1115,13 @@ class QuoteEditorDialog(QDialog):
         self.save_state=QLabel();self.save_state.setWordWrap(True);root.addWidget(self.save_state)
         header = QGroupBox(tr("En-tête du devis"))
         form = QGridLayout(header)
-        self.client = QComboBox()
-        self.clients = db.lister_clients()
-        for c in self.clients: self.client.addItem(c["nom"], c["id"])
+        self.client_choice = ClientChoice(self)
+        self.client = self.client_choice.combo
+        self.new_client_btn = self.client_choice.add_btn
         self.date = make_date()
         self.objet = QLineEdit()
         self.validite = QSpinBox(); self.validite.setRange(1, 365)
-        form.addWidget(QLabel(tr("Client")), 0, 0); form.addWidget(self.client, 0, 1)
+        form.addWidget(QLabel(tr("Client")), 0, 0); form.addWidget(self.client_choice, 0, 1)
         form.addWidget(QLabel(tr("Date")), 0, 2); form.addWidget(self.date, 0, 3)
         form.addWidget(QLabel(tr("Objet")), 1, 0); form.addWidget(self.objet, 1, 1, 1, 3)
         form.addWidget(QLabel(tr("Validité (jours)")), 2, 0); form.addWidget(self.validite, 2, 1)
@@ -1179,6 +1215,7 @@ class QuoteEditorDialog(QDialog):
         sent = d["statut"] == "envoye"
         accepted = d["statut"] == "accepte"
         for w in [self.client, self.date, self.objet, self.validite]: w.setEnabled(draft)
+        self.new_client_btn.setVisible(draft)
         for b in [self.save_btn, self.add_catalog_btn, self.add_free_btn, self.edit_line_btn, self.remove_line_btn]: b.setVisible(draft)
         self.emit_btn.setVisible(draft)
         self.accept_btn.setVisible(sent); self.refuse_btn.setVisible(sent)
@@ -1331,8 +1368,6 @@ class QuotesPage(Page):
         fill_table(self.table, enriched, ids)
 
     def add(self):
-        if not db.lister_clients():
-            show_info(self, tr("Ajoutez d’abord un client.")); return
         d = QuoteCreateDialog(self)
         if d.exec():
             try:

@@ -19,6 +19,8 @@ EN={
 }
 
 EN.update({
+    'Nouveau client': 'New customer',
+    'Choisissez un client ou créez-en un.': 'Choose a customer or create one.',
     'Création et modification uniquement dans Réglages.': 'Create and edit only in Settings.',
     'Conditions facultatives enregistrées automatiquement. Elles s’affichent dans les devis et factures existants et en bas du prochain PDF. Laissez un champ vide pour ne pas l’afficher.': 'Optional terms are saved automatically. They appear in existing quotes and invoices and at the bottom of the next PDF. Leave a field empty to hide it.',
     'Conditions enregistrées automatiquement.': 'Terms saved automatically.',
