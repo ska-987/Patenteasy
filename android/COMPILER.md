@@ -47,6 +47,6 @@ Tests :
 - `node --test tests/mobile_model.test.cjs` : modèle métier.
 - `tests/run_tests.py` : chiffrement réel JCA et contrôles natifs, avec stockage Android simulé. Nécessite JDK 17 et `PATENTEASY_TEST_JSON_JAR` pointant vers org.json 20240303 de Maven Central.
 - `tests/interface_dom.test.cjs` : interface simulée, nécessite linkedom.
-- `tests/interface.test.cjs` : parcours Chromium à lancer dans un environnement où Chromium/Playwright fonctionnent. Ce test de rendu n’a pas pu être exécuté dans l’environnement de livraison ; il ne remplace pas le test sur téléphone.
+- `tests/interface.test.cjs` : parcours Chromium à lancer dans un environnement où Chromium/Playwright fonctionnent. Le parcours a réussi dans GitHub Actions pour la construction 0.4.1 (19 contrôles). Le pont Android y est simulé ; il ne remplace pas un test sur téléphone.
 
 Licence : GPL-3.0-or-later pour Patenteasy. Aucun compte développeur ni mot de passe universel n’est intégré aux binaires.

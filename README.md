@@ -1,134 +1,112 @@
-# Patenteasy
+# Patenteasy — bêta 0.4.1
 
-**Version Windows :** bêta 0.4.1
-**Version Android :** bêta 0.4.1
+Gestion locale des clients, devis, factures et encaissements pour les indépendants et petites entreprises, quel que soit leur métier.
 
-Application de gestion locale pour indépendants, artisans et petites entreprises.
+**Développeur :** ska_987 · **Licence :** GNU GPL v3 ou ultérieure  
+**Windows :** interface native PySide6/Qt, 64 bits · **Android :** Android 8 ou supérieur
 
-**Développeur :** ska_987  
-**Plateformes :** Windows 64 bits et Android 8+  
-**Licence :** GNU GPL v3 ou ultérieure
+Les deux applications fonctionnent avec leurs données locales. Elles ne synchronisent pas automatiquement les données entre ordinateur et téléphone.
 
-## Éditions
+## Télécharger et installer
 
-Patenteasy existe en deux éditions locales indépendantes :
+**La bêta 0.4.1 est construite et testée, mais sa publication Cloudflare attend les clés de signature et les accès de publication de l’éditeur.** L’APK portant la mention `A-SIGNER` ne s’installe pas.
 
-- **Windows 0.4.1** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
-- **Android 0.4.1** : application hors ligne avec stockage local sur le téléphone.
+| Version | Où la trouver | État |
+| --- | --- | --- |
+| Windows 0.4.1 | [Constructions GitHub Actions](https://github.com/ska-987/Patenteasy/actions/workflows/windows-release.yml), artefact `Patenteasy-Windows-0.4.1` | Installeur complet construit et vérifié |
+| Android 0.4.1 | Même workflow, artefact `Patenteasy-Android-0.4.1-A-SIGNER` | Construction vérifiée ; signature originale nécessaire |
+| Versions déjà publiées | [Releases GitHub](https://github.com/ska-987/Patenteasy/releases) | Dernier installeur Windows publié sur GitHub : bêta 0.4.0 |
 
-Il n'y a pas de synchronisation automatique entre Windows et Android.
+Les artefacts Actions nécessitent une connexion GitHub et sont conservés 30 jours. Après publication, la release `v0.4.1-beta` regroupera l’installeur Windows et l’APK signée.
 
-## Fonctions principales
+État du catalogue Cloudflare vérifié le **8 octobre 2026** : Windows **0.3.8**, Android **0.3.7**. Le numéro de version dans les sources ne signifie donc pas que la mise à jour est déjà distribuée.
 
-Gestion de l'entreprise, clients, catalogue, devis, factures, paiements, avoirs, journal, sauvegardes et export de données. L'édition Windows propose également des fonctions plus avancées de stock, fiscalité et suivi.
+Sous Windows, l’installeur contient le programme et ses dépendances : aucun Python à installer pour utiliser l’application. Fermer Patenteasy et installer par-dessus la version existante. Sous Android, sauvegarder puis installer l’APK officiellement signée par-dessus l’application, sans la désinstaller.
 
-## Installation Windows
+Voir [l’installation détaillée](docs/INSTALLATION.md).
 
-Téléchargez l’installeur complet depuis les versions publiées du dépôt. Il contient
-le programme et ses dépendances ; Python n’est pas nécessaire. Installez par-dessus
-la version actuelle pour conserver les comptes et les données.
+## Ce qui change dans la bêta 0.4.1
 
-La version 0.4.1 propose un profil général : pays facultatif, devise libre à trois lettres,
-précision de 0 à 4 décimales, interface français/anglais, dates JJ/MM/AA, MM/JJ/AA ou
-AAAA-MM-JJ. Choisissez la devise avant d’enregistrer des montants ; les montants déjà
-enregistrés ne sont jamais convertis automatiquement. Les anciens profils conservent
-la devise XPF et leurs deux décimales historiques.
+- **Factures accessibles :** ouverture depuis les listes et le tableau de bord, avec accès à l’aperçu, à l’export PDF et à l’encaissement.
+- **Référence et désignation séparées :** colonnes distinctes dans les devis, factures et PDF.
+- **Conditions facultatives dans Réglages :** enregistrement automatique des conditions de vente, de règlement et informations complémentaires. Elles apparaissent aussi sur les anciens documents au prochain aperçu ou export, au bas du PDF. Les montants et paiements enregistrés sont conservés.
+- **Nouveau client depuis un devis :** création et sélection du client sans perdre les lignes ni les informations déjà saisies.
+- **Accès rapide aux PDF :** Windows propose un dossier `Patenteasy` sur le Bureau au premier export, ou un autre dossier. Android permet de choisir un dossier via le sélecteur système. Le choix est mémorisé ; Réglages permet de le changer. Android propose aussi l’ouverture du dernier PDF.
+- **Dates plus simples :** séparateurs automatiques. Windows propose JJ/MM/AA, MM/JJ/AA ou AAAA-MM-JJ ; Android utilise JJ/MM/AA.
+- **Profil général :** pays et identifiants professionnels facultatifs, devise à trois lettres et précision monétaire de 0 à 4 décimales. Le choix de taxe reste à l’utilisateur. Le chiffre d’affaires est facultatif et ne bloque aucun document.
+- **Confort sur Windows :** sélection lisible et facile à effacer, défilement amélioré et brouillons enregistrés pendant la saisie.
 
-Les identifiants professionnels et conditions restent facultatifs. Le choix de taxe
-est défini par l’utilisateur. Le CA reste facultatif ; le rappel de 10 millions
-concerne uniquement la Polynésie avec la devise XPF et ne bloque aucun document.
-Le logiciel n’assure pas la conformité réglementaire de chaque pays.
+Les anciennes données conservent leur devise et leur précision ; aucune conversion monétaire automatique n’est effectuée. Windows propose une interface français/anglais ; l’interface Android reste en français.
 
-Les brouillons conservent automatiquement les champs saisis, y compris une date
-incomplète. L’aperçu PDF reprend les dernières données valides. Les nouvelles
-sauvegardes chiffrées se récupèrent sur un PC sans données depuis l’écran de création
-de compte, avec le mot de passe administrateur ou le code correspondant au moment
-de la sauvegarde. Les anciennes sauvegardes nécessitent aussi le fichier acces.json
-sur un autre PC. Conservez les sauvegardes et secrets de récupération hors du PC.
+Le rappel de seuil de chiffre d’affaires de 10 millions concerne uniquement le profil Polynésie/XPF. Il est informatif. Les conditions et obligations applicables restent définies par l’utilisateur pour son activité et son pays.
 
-Les mises à jour sont vérifiées automatiquement à l’ouverture avec un catalogue
-signé. Le dossier de publication et son assistant sont décrits dans
-[distribution/PUBLICATION-0.4.1.md](distribution/PUBLICATION-0.4.1.md).
+Voir [les nouveautés détaillées](docs/NOUVEAUTES_0.4.1.md).
 
-## Bêta 0.4.1 et publication
+## Fonctions disponibles
 
-Les deux éditions portent la version 0.4.1. Le workflow construit et contrôle les
-applications. Sur `main`, la signature originale et la publication Cloudflare
-s’exécutent automatiquement si les secrets de l’éditeur sont configurés. Les
-applications sont relues et vérifiées avant publication du catalogue signé.
-Sans les clés originales, l’APK préparée porte la mention `A-SIGNER` et n’est pas
-installable ; aucun catalogue n’est remplacé. La procédure locale est fournie.
+Entreprise et clients, catalogue, devis, factures, encaissements partiels ou complets, avoirs, journal, recherches, exports PDF/CSV, comptes locaux administrateur/utilisateur, sauvegardes et récupération des données. L’édition Windows comporte également la gestion des stocks et des fonctions de suivi plus avancées.
 
-Les conditions facultatives s’enregistrent automatiquement dans Réglages. Elles
-s’appliquent aux anciens documents au prochain aperçu ou export, sans modifier
-leurs montants, leurs paiements ni leur identité commerciale enregistrée.
-La création d’un client est disponible directement dans l’éditeur de devis.
+Les nouvelles sauvegardes Windows chiffrées peuvent être restaurées sur un autre PC depuis l’écran de création de compte, avec le mot de passe administrateur ou le code de récupération correspondant à la sauvegarde. Les anciennes sauvegardes nécessitent également leur fichier `acces.json` pour une restauration sur un autre PC.
 
-Sur Android, pays et identifiants professionnels restent facultatifs. La devise
-et sa précision sont choisies avant les premiers montants, puis préservées.
-Les dates se saisissent avec des séparateurs automatiques JJ/MM/AA. Au premier
-export PDF, le dossier est choisi via Android puis mémorisé. Réglages permet de
-changer le dossier et d’ouvrir le dernier PDF. La confirmation d’installation
-reste celle du système Android.
+## Mises à jour et publication
 
-Les factures s’ouvrent depuis leur liste et le tableau de bord pour l’aperçu PDF,
-l’export et l’encaissement. Les références et désignations utilisent des colonnes
-séparées, y compris dans le PDF. Au premier export, l’utilisateur peut créer
-`Patenteasy` sur son Bureau ou choisir un autre dossier. L’emplacement est mémorisé
-pour les prochains exports ; le bouton « Ouvrir le dossier PDF » donne un accès direct.
+Les applications vérifient les mises à jour à partir d’un catalogue HTTPS signé. Android demande la confirmation système pour installer une nouvelle APK.
 
-## Architecture
+Le [workflow Windows et Android](.github/workflows/windows-release.yml) construit et contrôle les deux applications à partir du même commit. Sur `main`, il signe puis publie automatiquement sur Cloudflare **si les secrets de l’éditeur sont configurés**. Les téléchargements des deux applications sont vérifiés avant l’envoi du catalogue signé, puis une release GitHub bêta est créée.
 
-- `database.py` : données locales et accès SQLite ;
-- `gestion.py` : logique métier ;
-- `qt_app.py` : interface Windows PySide6/Qt ;
-- `application_windows.py` : lanceur Windows ;
-- `pdf_documents.py` : génération PDF ;
-- `mises_a_jour.py` : vérification et téléchargement de mises à jour via catalogue HTTPS signé ;
-- `android/` : sources Android, interface, stockage local et compilation APK.
+Sans les accès nécessaires, le workflow indique **Publication non effectuée** et conserve les constructions disponibles. Une tâche verte ne signifie pas, à elle seule, que la publication a eu lieu.
 
-L'ancienne interface web reste dans les sources pour compatibilité et certains tests, mais l'application Windows utilise l'interface Qt.
+La [procédure de publication 0.4.1](distribution/PUBLICATION-0.4.1.md) décrit les sept secrets GitHub et le script `Publier-0.4.1.cmd` pour publier depuis le PC éditeur. La signature Android originale et la clé originale du catalogue sont requises ; elles restent hors du dépôt.
 
-## Développement
+## Vérifications
 
-Python 3.10.1 à 3.14 est pris en charge pour travailler depuis les sources. Sous Windows, `INSTALLER.cmd` sélectionne automatiquement la version compatible la plus récente disponible. Python 3.10.0 est explicitement refusé car incompatible avec PyInstaller.
+La construction 0.4.1 du [commit testé](https://github.com/ska-987/Patenteasy/actions/runs/37848368831) a passé les tests Windows, les vérifications du programme livré, la mise à niveau depuis 0.4.0 et la réinstallation avec conservation des données de test.
 
-Sous Windows :
+Android a passé les tests du modèle, de l’interface DOM, du rendu Chromium, du coffre, du catalogue signé et du CSV ; l’APK a été construite avec le SDK officiel. Les ponts Android et le stockage sont simulés dans ces tests. **L’installation sur un téléphone réel et les exports PDF natifs restent à vérifier sur appareil avant diffusion générale.**
+
+Voir [le parcours de bêta-test 0.4.1](docs/BETA_TEST_0.4.1.md).
+
+## Développer depuis les sources
+
+L’assistant Windows `INSTALLER.cmd` recherche Python 3.10.1 à 3.14 et prépare les dépendances. Python 3.10.0 est refusé par cet assistant.
 
 ```text
 INSTALLER.cmd
 LANCER.cmd
 ```
 
-Pour les tests Python :
+Depuis la racine du dépôt, avec les dépendances de test installées :
 
-```powershell
-python -m pytest -q
+```text
+python -m pytest -q tests
+node --test android/tests/mobile_model.test.cjs
 ```
 
-Pour le modèle mobile :
+Les tests d’interface Android nécessitent linkedom ou Playwright selon le parcours ; les tests JVM nécessitent JDK 17 et la bibliothèque org.json. Voir [la compilation et les tests Android](android/COMPILER.md).
 
-```powershell
-node --test tests/mobile_model.test.cjs
-```
+Compilation Windows : `distribution/COMPILER_WINDOWS.cmd`. Compilation Android : `android/compiler_apk.py`, selon les [instructions Android](android/COMPILER.md).
 
-## Compilation
+## Organisation des sources
 
-Windows : `distribution/COMPILER_WINDOWS.cmd`
+| Emplacement | Rôle |
+| --- | --- |
+| `qt_app.py`, `application_windows.py` | Interface et lancement Windows natifs |
+| `database.py`, `gestion.py` | Données locales et logique métier |
+| `pdf_documents.py` | Documents PDF Windows |
+| `mises_a_jour.py` | Catalogue signé et mises à jour Windows |
+| `android/` | Application Android, interface, stockage, PDF et mises à jour |
+| `distribution/` | Construction, signature et publication |
+| `docs/` | Documentation utilisateur et développeur |
 
-Android : voir [android/COMPILER.md](android/COMPILER.md).
+L’ancienne interface web reste dans les sources pour compatibilité et certains tests ; Windows utilise Qt.
 
-Les clés de signature et mots de passe doivent rester hors du dépôt.
-
-## Documentation
-
-La documentation détaillée est regroupée dans [docs/](docs/) :
+## Documentation et licence
 
 - [Installation](docs/INSTALLATION.md)
-- [Bêta-test 0.4.1](docs/BETA_TEST_0.4.1.md)
-- [Architecture Qt](docs/ARCHITECTURE_QT.md)
 - [Nouveautés 0.4.1](docs/NOUVEAUTES_0.4.1.md)
+- [Bêta-test 0.4.1](docs/BETA_TEST_0.4.1.md)
+- [Publication Windows et Android](distribution/PUBLICATION-0.4.1.md)
+- [Architecture Qt](docs/ARCHITECTURE_QT.md)
+- [GNU GPL v3 ou ultérieure](LICENSE)
 
-## Licence
-
-Le code Patenteasy est distribué sous GNU GPL v3 ou ultérieure. Les composants tiers conservent leurs propres licences, stockées à proximité des composants concernés.
+Les composants tiers conservent leurs licences à proximité des composants concernés. Les clés privées, mots de passe, sauvegardes et données utilisateur doivent rester hors du dépôt.
