@@ -3,6 +3,9 @@ import hashlib
 import io
 import json
 import pytest
+import zipfile
+import publication_release
+from version import VERSION_ANDROID
 from distribution import publier_automatique as module
 
 
@@ -54,3 +57,23 @@ def test_version_deja_publiee_ne_peut_pas_etre_ecrasee(tmp_path,monkeypatch):
     with pytest.raises(ValueError,match='existe déjà'):module.publier(tmp_path,client,lambda *a:None)
     assert client.ecritures==[]
     assert client.objets['catalogue.json']==b'ancien'
+
+
+def test_signature_et_contenu_android_correspondent_a_la_construction(tmp_path,monkeypatch):
+    candidat=tmp_path/f'Patenteasy-Android-{VERSION_ANDROID}-A-SIGNER.apk'
+    apk=tmp_path/f'Patenteasy-Android-{VERSION_ANDROID}.apk'
+    for fichier in (candidat,apk):
+        with zipfile.ZipFile(fichier,'w') as z:z.writestr('AndroidManifest.xml',b'manifeste-controle');z.writestr('classes.dex',b'code-controle')
+    jar=tmp_path/'apksigner.jar';jar.write_bytes(b'outil-sdk')
+    m={'version':VERSION_ANDROID,'versionCode':10,'package':'pf.ska987.patenteasy.local','source':'commit-verifie',
+       'taille':candidat.stat().st_size,'sha256':hashlib.sha256(candidat.read_bytes()).hexdigest(),
+       'apksigner_sha256':hashlib.sha256(jar.read_bytes()).hexdigest()}
+    (tmp_path/'android-verifie.json').write_text(json.dumps(m))
+    sortie='Signer #1 certificate SHA-256 digest: '+publication_release.CERTIFICAT_ANDROID
+    monkeypatch.setattr(publication_release.subprocess,'check_output',lambda *a,**k:sortie)
+    assert publication_release.verifier_apk(tmp_path,{'source':'commit-verifie'})[0]==apk
+    with pytest.raises(ValueError,match='même commit'):publication_release.verifier_apk(tmp_path,{'source':'autre-commit'})
+    monkeypatch.setattr(publication_release.subprocess,'check_output',lambda *a,**k:'Signer #1 certificate SHA-256 digest: '+64*'0')
+    with pytest.raises(ValueError,match='signature Android'):publication_release.verifier_apk(tmp_path,{'source':'commit-verifie'})
+    with zipfile.ZipFile(apk,'w') as z:z.writestr('AndroidManifest.xml',b'ancienne-version');z.writestr('classes.dex',b'code-controle')
+    with pytest.raises(ValueError,match='diffère'):publication_release.verifier_apk(tmp_path,{'source':'commit-verifie'})

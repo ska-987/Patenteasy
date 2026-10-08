@@ -1,7 +1,7 @@
 # Patenteasy
 
-**Version Windows :** 0.4.0
-**Version Android :** 0.3.7
+**Version Windows :** bêta 0.4.1
+**Version Android :** bêta 0.4.1
 
 Application de gestion locale pour indépendants, artisans et petites entreprises.
 
@@ -13,8 +13,8 @@ Application de gestion locale pour indépendants, artisans et petites entreprise
 
 Patenteasy existe en deux éditions locales indépendantes :
 
-- **Windows 0.4.0** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
-- **Android 0.3.7** : application hors ligne avec stockage local sur le téléphone.
+- **Windows 0.4.1** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
+- **Android 0.4.1** : application hors ligne avec stockage local sur le téléphone.
 
 Il n'y a pas de synchronisation automatique entre Windows et Android.
 
@@ -28,7 +28,7 @@ Téléchargez l’installeur complet depuis les versions publiées du dépôt. I
 le programme et ses dépendances ; Python n’est pas nécessaire. Installez par-dessus
 la version actuelle pour conserver les comptes et les données.
 
-La version 0.4.0 propose un profil général : pays facultatif, devise libre à trois lettres,
+La version 0.4.1 propose un profil général : pays facultatif, devise libre à trois lettres,
 précision de 0 à 4 décimales, interface français/anglais, dates JJ/MM/AA, MM/JJ/AA ou
 AAAA-MM-JJ. Choisissez la devise avant d’enregistrer des montants ; les montants déjà
 enregistrés ne sont jamais convertis automatiquement. Les anciens profils conservent
@@ -48,13 +48,28 @@ sur un autre PC. Conservez les sauvegardes et secrets de récupération hors du 
 
 Les mises à jour sont vérifiées automatiquement à l’ouverture avec un catalogue
 signé. Le dossier de publication et son assistant sont décrits dans
-[distribution/PUBLICATION-0.4.0.txt](distribution/PUBLICATION-0.4.0.txt).
+[distribution/PUBLICATION-0.4.1.md](distribution/PUBLICATION-0.4.1.md).
 
-## Travail en cours, sans nouvelle release
+## Bêta 0.4.1 et publication
 
-La branche `work/factures-pdf` produit un installeur de test. Elle ne crée aucune
-release, aucun tag et ne publie aucun catalogue de mise à jour. La version interne
-reste inchangée jusqu’à validation de la beta.
+Les deux éditions portent la version 0.4.1. Le workflow construit et contrôle les
+applications. Sur `main`, la signature originale et la publication Cloudflare
+s’exécutent automatiquement si les secrets de l’éditeur sont configurés. Les
+applications sont relues et vérifiées avant publication du catalogue signé.
+Sans les clés originales, l’APK préparée porte la mention `A-SIGNER` et n’est pas
+installable ; aucun catalogue n’est remplacé. La procédure locale est fournie.
+
+Les conditions facultatives s’enregistrent automatiquement dans Réglages. Elles
+s’appliquent aux anciens documents au prochain aperçu ou export, sans modifier
+leurs montants, leurs paiements ni leur identité commerciale enregistrée.
+La création d’un client est disponible directement dans l’éditeur de devis.
+
+Sur Android, pays et identifiants professionnels restent facultatifs. La devise
+et sa précision sont choisies avant les premiers montants, puis préservées.
+Les dates se saisissent avec des séparateurs automatiques JJ/MM/AA. Au premier
+export PDF, le dossier est choisi via Android puis mémorisé. Réglages permet de
+changer le dossier et d’ouvrir le dernier PDF. La confirmation d’installation
+reste celle du système Android.
 
 Les factures s’ouvrent depuis leur liste et le tableau de bord pour l’aperçu PDF,
 l’export et l’encaissement. Les références et désignations utilisent des colonnes
@@ -110,9 +125,9 @@ Les clés de signature et mots de passe doivent rester hors du dépôt.
 La documentation détaillée est regroupée dans [docs/](docs/) :
 
 - [Installation](docs/INSTALLATION.md)
-- [Bêta-test 0.3.7](docs/BETA_TEST_0.3.7.md)
+- [Bêta-test 0.4.1](docs/BETA_TEST_0.4.1.md)
 - [Architecture Qt](docs/ARCHITECTURE_QT.md)
-- [Nouveautés 0.3.7](docs/NOUVEAUTES_0.3.7.md)
+- [Nouveautés 0.4.1](docs/NOUVEAUTES_0.4.1.md)
 
 ## Licence
 

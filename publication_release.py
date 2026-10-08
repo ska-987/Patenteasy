@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import subprocess
+import zipfile
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -22,6 +23,21 @@ def verifier_apk(dossier, manifeste_windows):
             or not manifeste.get('source') or manifeste['source'] != manifeste_windows.get('source')):
         raise ValueError('Les deux applications doivent provenir du même commit vérifié.')
     programme = dossier / f'Patenteasy-Android-{VERSION_ANDROID}.apk'
+    candidat = dossier / f'Patenteasy-Android-{VERSION_ANDROID}-A-SIGNER.apk'
+    if (candidat.stat().st_size != manifeste['taille']
+            or hashlib.sha256(candidat.read_bytes()).hexdigest() != manifeste['sha256']):
+        raise ValueError('La construction Android contrôlée a été modifiée.')
+    # Une signature peut ajouter META-INF et un bloc APK, jamais changer le code
+    # ou le manifeste provenant du commit testé.
+    with zipfile.ZipFile(candidat) as original, zipfile.ZipFile(programme) as signe:
+        noms = set(original.namelist())
+        if len(noms) != len(original.namelist()) or len(set(signe.namelist())) != len(signe.namelist()):
+            raise ValueError('Contenu APK ambigu.')
+        if set(n for n in signe.namelist() if not n.startswith('META-INF/')) != set(n for n in noms if not n.startswith('META-INF/')):
+            raise ValueError('Le contenu Android signé diffère de la construction contrôlée.')
+        for nom in noms:
+            if original.read(nom) != signe.read(nom):
+                raise ValueError('Le contenu Android signé diffère de la construction contrôlée.')
     jar = dossier / 'apksigner.jar'
     if hashlib.sha256(jar.read_bytes()).hexdigest() != manifeste['apksigner_sha256']:
         raise ValueError('L’outil de signature a été modifié.')

@@ -185,6 +185,7 @@ jobs:
           "$RUNNER_TEMP/mobile-tests/node_modules/.bin/playwright" install --with-deps chromium
           curl --fail --location --output "$RUNNER_TEMP/json.jar" https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
       - name: Modèle, interface et protection native
+        timeout-minutes: 5
         env:
           NODE_PATH: ${{ runner.temp }}/mobile-tests/node_modules
           PATENTEASY_TEST_JSON_JAR: ${{ runner.temp }}/json.jar
