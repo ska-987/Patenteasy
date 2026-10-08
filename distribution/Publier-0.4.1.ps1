@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 function Secret($nom, $titre) {

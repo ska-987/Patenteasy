@@ -175,10 +175,14 @@ jobs:
         with:
           node-version: '22'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
       - name: SDK et dépendances de test
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-          npm install --prefix "$RUNNER_TEMP/mobile-tests" linkedom@0.18.12
+          npm install --prefix "$RUNNER_TEMP/mobile-tests" linkedom@0.18.12 playwright@1.58.2
+          "$RUNNER_TEMP/mobile-tests/node_modules/.bin/playwright" install --with-deps chromium
           curl --fail --location --output "$RUNNER_TEMP/json.jar" https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
       - name: Modèle, interface et protection native
         env:
@@ -187,6 +191,7 @@ jobs:
         run: |
           node --test android/tests/mobile_model.test.cjs
           node android/tests/interface_dom.test.cjs
+          node android/tests/interface.test.cjs
           python android/tests/run_tests.py
       - name: Préparer l’APK avec le SDK officiel
         run: |
