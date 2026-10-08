@@ -19,14 +19,14 @@ final class MisesAJour {
     MisesAJour(Context c,Coffre v,Sauvegardes b,JSONObject e){contexte=c;coffre=v;backups=b;editeur=e;}
     private HttpsURLConnection connexion(String lien,int timeout) throws Exception {
         URL u=new URL(lien);if(!"https".equals(u.getProtocol())||u.getUserInfo()!=null||!u.getHost().equals(new URL(SERVEUR).getHost()))throw new SecurityException("Lien de mise à jour non autorisé.");
-        HttpsURLConnection c=(HttpsURLConnection)u.openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(timeout);c.setReadTimeout(timeout);c.setRequestProperty("User-Agent","Patenteasy-Android/0.3.7");c.setRequestProperty("Accept","application/json, application/octet-stream");if(c.getResponseCode()!=200){c.disconnect();throw new IOException("Serveur indisponible.");}return c;
+        HttpsURLConnection c=(HttpsURLConnection)u.openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(timeout);c.setReadTimeout(timeout);c.setRequestProperty("User-Agent","Patenteasy-Android/0.4.1");c.setRequestProperty("Accept","application/json, application/octet-stream");if(c.getResponseCode()!=200){c.disconnect();throw new IOException("Serveur indisponible.");}return c;
     }
     synchronized String verifier() throws Exception {
         coffre.exiger();HttpsURLConnection c=connexion(editeur.getString("catalogue_mises_a_jour"),15000);byte[] raw;try{raw=Coffre.lire(c.getInputStream(),1000000);}finally{c.disconnect();}
         JSONObject catalogue=new JSONObject(new String(raw,StandardCharsets.UTF_8));JSONObject versions=Catalogue.versions(catalogue,editeur.getString("cle_publique_mises_a_jour"));
-        JSONObject mobile=versions.getJSONObject("android");String v=mobile.getString("version");Catalogue.comparer(v,"0.3.7");connexionValide(mobile.getString("url"));
+        JSONObject mobile=versions.getJSONObject("android");String v=mobile.getString("version");Catalogue.comparer(v,"0.4.1");connexionValide(mobile.getString("url"));
         if(!mobile.getString("sha256").matches("[0-9a-fA-F]{64}")||mobile.getLong("taille")<1||mobile.getLong("taille")>500000000||!"apk".equals(mobile.getString("format")))throw new SecurityException("Catalogue invalide.");
-        etat=new JSONObject(mobile.toString()).put("nouvelle",Catalogue.comparer(v,"0.3.7")>0).put("erreur","");derniere=System.currentTimeMillis();return etat.toString();
+        etat=new JSONObject(mobile.toString()).put("nouvelle",Catalogue.comparer(v,"0.4.1")>0).put("erreur","");derniere=System.currentTimeMillis();return etat.toString();
     }
     private void connexionValide(String lien) throws Exception {URL u=new URL(lien);if(!"https".equals(u.getProtocol())||u.getUserInfo()!=null||!u.getHost().equals(new URL(SERVEUR).getHost()))throw new SecurityException("Lien non autorisé.");}
     synchronized void automatique(){if(System.currentTimeMillis()-derniere<3600000)return;try{verifier();}catch(Exception e){try{etat=new JSONObject().put("nouvelle",false).put("erreur","Vérification indisponible. Vos données restent locales.");}catch(Exception ignore){}derniere=System.currentTimeMillis();}}

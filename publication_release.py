@@ -4,12 +4,36 @@ import base64
 import hashlib
 import json
 import os
+import subprocess
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mises_a_jour import valider
-from version import VERSION
+from version import VERSION, VERSION_ANDROID
 ROOT = Path(__file__).resolve().parent
+CERTIFICAT_ANDROID = 'cfc8d95ee97be9a7a80eca28de72178d7e9cd01236dc8187c69ba1c60ff7c119'
+
+
+def verifier_apk(dossier, manifeste_windows):
+    dossier = Path(dossier)
+    manifeste = json.loads((dossier / 'android-verifie.json').read_text(encoding='utf-8'))
+    if (manifeste['version'] != VERSION_ANDROID or manifeste['versionCode'] != 10
+            or manifeste['package'] != 'pf.ska987.patenteasy.local'
+            or not manifeste.get('source') or manifeste['source'] != manifeste_windows.get('source')):
+        raise ValueError('Les deux applications doivent provenir du même commit vérifié.')
+    programme = dossier / f'Patenteasy-Android-{VERSION_ANDROID}.apk'
+    jar = dossier / 'apksigner.jar'
+    if hashlib.sha256(jar.read_bytes()).hexdigest() != manifeste['apksigner_sha256']:
+        raise ValueError('L’outil de signature a été modifié.')
+    resultat = subprocess.check_output([os.environ.get('PATENTEASY_JAVA', 'java'), '-jar', str(jar),
+                                      'verify', '--verbose', '--print-certs', str(programme)], text=True)
+    certificats = [ligne.split(':', 1)[1].strip().lower() for ligne in resultat.splitlines()
+                  if 'certificate SHA-256 digest:' in ligne]
+    if certificats != [CERTIFICAT_ANDROID]:
+        raise ValueError('La signature Android ne correspond pas à vos applications installées.')
+    taille = programme.stat().st_size
+    empreinte = hashlib.sha256(programme.read_bytes()).hexdigest()
+    return programme, taille, empreinte
 
 
 def preparer(dossier):
@@ -26,7 +50,9 @@ def preparer(dossier):
             h.update(bloc)
     if taille != manifeste['taille'] or h.hexdigest() != manifeste['sha256']:
         raise ValueError('L’installeur est incomplet ou a été modifié.')
-    chemin = Path(os.environ['LOCALAPPDATA']) / 'ska_987' / 'signature-patenteasy' / 'cle-privee.pem'
+    apk, taille_apk, empreinte_apk = verifier_apk(dossier, manifeste)
+    chemin = (Path(os.environ['PATENTEASY_CATALOGUE_KEY_FILE']) if os.environ.get('PATENTEASY_CATALOGUE_KEY_FILE')
+              else Path(os.environ['LOCALAPPDATA']) / 'ska_987' / 'signature-patenteasy' / 'cle-privee.pem')
     if not chemin.is_file():
         raise ValueError('La clé officielle est absente de cet ordinateur. Préparez la publication sur votre PC éditeur.')
     cle = serialization.load_pem_private_key(chemin.read_bytes(), password=None)
@@ -39,10 +65,10 @@ def preparer(dossier):
     versions = {
         'windows': {'version': VERSION, 'url': serveur + '/fichiers/' + programme.name,
                     'sha256': h.hexdigest(), 'taille': taille, 'format': 'exe',
-                    'notes': 'Profil général configurable, brouillons conservés, aperçu PDF et sauvegardes récupérables sur un nouveau PC.'},
-        'android': {'version': '0.3.7', 'url': serveur + '/fichiers/Patenteasy-Android-0.3.7.apk',
-                    'sha256': '7d6899b90c63ed6eb83f95a20adb8a714b23f4a9be1b061d1bfebca52e9271ff',
-                    'taille': 427542, 'format': 'apk', 'notes': 'Beta Android 0.3.7.'}
+                    'notes': 'Bêta 0.4.1 : accès factures et PDF, conditions facultatives rétroactives, nouveau client depuis le devis et profil général.'},
+        'android': {'version': VERSION_ANDROID, 'url': serveur + '/fichiers/' + apk.name,
+                    'sha256': empreinte_apk, 'taille': taille_apk, 'format': 'apk',
+                    'notes': 'Bêta 0.4.1 : conditions enregistrées dans Réglages, nouveau client depuis le devis, profil général et dossier PDF mémorisé.'}
     }
     canonique = json.dumps(versions, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
     catalogue = {'versions': versions, 'signature': base64.b64encode(cle.sign(canonique)).decode('ascii')}
@@ -61,7 +87,7 @@ def lancer(dossier):
     try:
         catalogue = preparer(dossier)
         QMessageBox.information(None, 'Patenteasy — Publication',
-            f'Catalogue signé et vérifié :\n{catalogue}\n\nDans le bucket R2 patenteasy-releases :\n1. Envoyez l’installeur EXE.\n2. Envoyez catalogue.json en dernier.\n\nLa clé privée reste sur votre ordinateur.')
+            f'Catalogue signé et vérifié :\n{catalogue}\n\nLes deux versions sont prêtes. Lancez Publier-0.4.1.cmd pour envoyer les applications et vérifier les téléchargements avant de publier le catalogue.\n\nLa clé privée reste sur votre ordinateur.')
         return 0
     except Exception as erreur:
         QMessageBox.critical(None, 'Patenteasy — Publication', str(erreur))

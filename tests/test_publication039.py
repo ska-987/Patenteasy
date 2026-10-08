@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import publication_release as publication
 from mises_a_jour import valider
-from version import VERSION
+from version import VERSION, VERSION_ANDROID
 
 
 def test_catalogue_signe_et_installateur_modifie_refuse(tmp_path, monkeypatch):
@@ -24,10 +24,13 @@ def test_catalogue_signe_et_installateur_modifie_refuse(tmp_path, monkeypatch):
     exe.write_bytes(b'MZ-test-integration')
     manifest={'version':VERSION,'taille':exe.stat().st_size,'sha256':hashlib.sha256(exe.read_bytes()).hexdigest()}
     (tmp_path/'version-verifiee.json').write_text(json.dumps(manifest),encoding='utf-8-sig')
+    apk=tmp_path/f'Patenteasy-Android-{VERSION_ANDROID}.apk'
+    apk.write_bytes(b'APK-test')
+    monkeypatch.setattr(publication,'verifier_apk',lambda dossier, manifeste:(apk,apk.stat().st_size,hashlib.sha256(apk.read_bytes()).hexdigest()))
     output=publication.preparer(tmp_path)
     catalogue=json.loads(output.read_text(encoding="utf-8"))
     assert valider(catalogue, public, 'windows')['version'] == VERSION
-    assert valider(catalogue, public, 'android')['version'] == '0.3.7'
+    assert valider(catalogue, public, 'android')['version'] == VERSION_ANDROID
     exe.write_bytes(b'MZ-corrompu')
     with pytest.raises(ValueError,match='modifié'): publication.preparer(tmp_path)
     exe.write_bytes(b'MZ-test-integration')

@@ -1,7 +1,7 @@
-name: Installeur de travail Windows
+name: Patenteasy bêta 0.4.1 · Windows et Android
 on:
   push:
-    branches: ['work/factures-pdf']
+    branches: ['work/factures-pdf', 'main']
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
           $p = Start-Process -FilePath '.\dist\Patenteasy\Patenteasy.exe' -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
           if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme livré invalide' }
           $result = Get-Content $report -Raw | ConvertFrom-Json
-          if (-not $result.ok -or $result.version -ne '0.4.0') { throw 'Vérification échouée' }
+          if (-not $result.ok -or $result.version -ne '0.4.1') { throw 'Vérification échouée' }
           Copy-Item $report distribution/verification-programme.json
       - name: Installeur complet
         shell: pwsh
@@ -55,7 +55,7 @@ jobs:
           if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne '4f494ea32901ed1e5e443ae60b890e791146da54e5d00ae9e31ddedafb5d0a25') { throw 'Ancien installeur invalide' }
           $p = Start-Process -FilePath $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw 'Installation 0.4.0 échouée' }
-          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.4.0-Installation.exe'
+          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.4.1-Installation.exe'
           foreach ($pass in 1..2) {
             $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw 'Installation échouée' }
@@ -69,15 +69,136 @@ jobs:
       - name: Empreinte et sources
         shell: pwsh
         run: |
-          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.4.0-Installation.exe'
+          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.4.1-Installation.exe'
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($exe.Name)" | Set-Content distribution/sortie/SHA256SUMS.txt -Encoding ascii
-          @{ version='0.4.0'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
-          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.4.0.zip HEAD
+          @{ version='0.4.1'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
+          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.4.1.zip HEAD
           Copy-Item distribution/verification-*.json distribution/sortie/
       - uses: actions/upload-artifact@v4
         with:
-          name: Patenteasy-Windows-Test
+          name: Patenteasy-Windows-0.4.1
           path: distribution/sortie/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publication:
+    needs: [windows, android]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: patenteasy-publication
+      cancel-in-progress: false
+    env:
+      PATENTEASY_ANDROID_KEYSTORE_BASE64: ${{ secrets.PATENTEASY_ANDROID_KEYSTORE_BASE64 }}
+      PATENTEASY_KEY_ALIAS: ${{ secrets.PATENTEASY_ANDROID_KEY_ALIAS }}
+      PATENTEASY_KEY_PASSWORD: ${{ secrets.PATENTEASY_ANDROID_KEY_PASSWORD }}
+      PATENTEASY_CATALOGUE_PRIVATE_KEY: ${{ secrets.PATENTEASY_CATALOGUE_PRIVATE_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier les accès de publication
+        id: acces
+        run: |
+          python - <<'PY'
+          import os
+          noms=['PATENTEASY_ANDROID_KEYSTORE_BASE64','PATENTEASY_KEY_ALIAS','PATENTEASY_KEY_PASSWORD','PATENTEASY_CATALOGUE_PRIVATE_KEY','CLOUDFLARE_ACCOUNT_ID','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY']
+          manquants=[n for n in noms if not os.environ.get(n)]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('pret='+('non' if manquants else 'oui')+'\n')
+          if manquants:
+              print('::warning::Publication non effectuée : clés de signature ou accès Cloudflare non configurés. Les constructions restent disponibles pour le PC éditeur.')
+              with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('### Publication non effectuée\nConfigurer les secrets de signature et Cloudflare documentés dans distribution/PUBLICATION-0.4.1.md. Aucun catalogue ni APK de production remplacé.\n')
+          PY
+      - uses: actions/download-artifact@v4
+        if: steps.acces.outputs.pret == 'oui'
+        with:
+          pattern: Patenteasy-*-0.4.1*
+          path: publication
+          merge-multiple: true
+      - uses: actions/setup-java@v4
+        if: steps.acces.outputs.pret == 'oui'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Signer puis publier les deux applications vérifiées
+        if: steps.acces.outputs.pret == 'oui'
+        run: |
+          python -m pip install cryptography==46.0.3 certifi 'boto3>=1.35'
+          python - <<'PY'
+          import base64,os
+          from pathlib import Path
+          racine=Path(os.environ['RUNNER_TEMP'])/'patenteasy-signature'
+          racine.mkdir(mode=0o700)
+          cle=racine/'android.jks';cle.write_bytes(base64.b64decode(os.environ['PATENTEASY_ANDROID_KEYSTORE_BASE64'],validate=True));cle.chmod(0o600)
+          pem=racine/'catalogue.pem';pem.write_text(os.environ['PATENTEASY_CATALOGUE_PRIVATE_KEY']);pem.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write(f'PATENTEASY_KEYSTORE={cle}\nPATENTEASY_CATALOGUE_KEY_FILE={pem}\n')
+          PY
+          export PATENTEASY_KEYSTORE="$RUNNER_TEMP/patenteasy-signature/android.jks"
+          export PATENTEASY_CATALOGUE_KEY_FILE="$RUNNER_TEMP/patenteasy-signature/catalogue.pem"
+          python distribution/publier_automatique.py publication --signer-android
+      - name: Release GitHub bêta
+        if: steps.acces.outputs.pret == 'oui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view v0.4.1-beta >/dev/null 2>&1; then
+            gh release create v0.4.1-beta --target "$GITHUB_SHA" --prerelease --title 'Patenteasy bêta 0.4.1 · Windows et Android' --notes-file distribution/PUBLICATION-0.4.1.md publication/Patenteasy-Windows-0.4.1-Installation.exe publication/Patenteasy-Android-0.4.1.apk publication/catalogue.json publication/Patenteasy-Sources-0.4.1.zip
+          fi
+      - uses: actions/upload-artifact@v4
+        if: steps.acces.outputs.pret == 'oui'
+        with:
+          name: Patenteasy-Beta-0.4.1-Publiee
+          path: |
+            publication/Patenteasy-Windows-0.4.1-Installation.exe
+            publication/Patenteasy-Android-0.4.1.apk
+            publication/catalogue.json
+          if-no-files-found: error
+      - name: Retirer les copies temporaires des clés
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/patenteasy-signature"
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: android-actions/setup-android@v3
+      - name: SDK et dépendances de test
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          npm install --prefix "$RUNNER_TEMP/mobile-tests" linkedom@0.18.12
+          curl --fail --location --output "$RUNNER_TEMP/json.jar" https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
+      - name: Modèle, interface et protection native
+        env:
+          NODE_PATH: ${{ runner.temp }}/mobile-tests/node_modules
+          PATENTEASY_TEST_JSON_JAR: ${{ runner.temp }}/json.jar
+        run: |
+          node --test android/tests/mobile_model.test.cjs
+          node android/tests/interface_dom.test.cjs
+          python android/tests/run_tests.py
+      - name: Préparer l’APK avec le SDK officiel
+        run: |
+          python android/compiler_apk.py --unsigned
+          cp "$ANDROID_SDK_ROOT/build-tools/35.0.0/lib/apksigner.jar" android/build/
+          python distribution/manifeste_android.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Patenteasy-Android-0.4.1-A-SIGNER
+          path: |
+            android/build/*-A-SIGNER.apk
+            android/build/apksigner.jar
+            android/build/android-verifie.json
           if-no-files-found: error
           retention-days: 30

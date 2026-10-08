@@ -1,4 +1,4 @@
-# Compiler Patenteasy Android 0.3.7
+# Compiler Patenteasy Android 0.4.1
 
 Dossier de travail : `C:\Users\MIKA\Documents\Patenteasy\android`.
 Il faut Python 3.10+, JDK 17, SDK Android avec `platforms;android-35` et `build-tools;35.0.0`.
@@ -23,8 +23,10 @@ try {
 }
 ```
 
-Sortie : `C:\Users\MIKA\Documents\Patenteasy\android\build\Patenteasy-Android-0.3.7.apk`.
+Sortie : `C:\Users\MIKA\Documents\Patenteasy\android\build\Patenteasy-Android-0.4.1.apk`.
 Le keystore reste privé, extérieur au projet. N’utilisez pas une nouvelle clé : les mises à jour des installations existantes seraient refusées.
+
+La construction CI produit un fichier « A-SIGNER.apk » qui n’est pas installable. La signature originale est appliquée par la publication ; aucun certificat de remplacement n’est créé.
 
 Pour une version suivante, augmentez `versionCode` et `versionName` dans le manifeste. Les versions affichées dans l’interface et le code de vérification doivent être mises à jour aussi. Publiez un APK correspondant réellement à sa version et à son SHA-256.
 

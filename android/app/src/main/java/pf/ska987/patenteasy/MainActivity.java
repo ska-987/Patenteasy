@@ -14,7 +14,7 @@ import org.json.*;
 
 /** Interface locale et pont vers le coffre : aucun serveur et aucun compte développeur. */
 public class MainActivity extends Activity {
-    private WebView web,impression;
+    private WebView web;private ExportPdf exportPdf;private String pdfNom="",pdfHtml="";
     private Coffre coffre;private Sauvegardes sauvegardes;private MisesAJour updates;private Connexion connexion;
     private SharedPreferences preferences;
     private final ExecutorService travail=Executors.newSingleThreadExecutor();
@@ -25,7 +25,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle b){
         super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);
         preferences=getSharedPreferences("patenteasy_local",MODE_PRIVATE);
-        try{coffre=new Coffre(this);sauvegardes=new Sauvegardes(this,coffre);updates=new MisesAJour(this,coffre,sauvegardes,new JSONObject(configuration()));connexion=new Connexion(this,coffre,travail);}catch(Exception e){new AlertDialog.Builder(this).setTitle("Coffre inaccessible").setMessage("Aucune donnée n’a été effacée. Contactez sav.centreprotech@proton.me.").setPositiveButton("Fermer",(x,y)->finish()).show();return;}
+        try{coffre=new Coffre(this);sauvegardes=new Sauvegardes(this,coffre);updates=new MisesAJour(this,coffre,sauvegardes,new JSONObject(configuration()));connexion=new Connexion(this,coffre,travail);exportPdf=new ExportPdf(this,coffre,preferences,this::message);}catch(Exception e){new AlertDialog.Builder(this).setTitle("Coffre inaccessible").setMessage("Aucune donnée n’a été effacée. Contactez sav.centreprotech@proton.me.").setPositiveButton("Fermer",(x,y)->finish()).show();return;}
         web=new WebView(this);web.setOnApplyWindowInsetsListener((v,insets)->{v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;});setContentView(web,new ViewGroup.LayoutParams(-1,-1));
         WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(false);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setAllowFileAccessFromFileURLs(false);settings.setAllowUniversalAccessFromFileURLs(false);settings.setBlockNetworkLoads(true);web.addJavascriptInterface(new PontLocal(),"Android");web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient(){
@@ -39,13 +39,14 @@ public class MainActivity extends Activity {
     private void verrouiller(){runOnUiThread(()->{if(demandeConnexion||fermee)return;demandeConnexion=true;coffre.verrouiller();web.loadUrl("about:blank");connexion.afficher();});}
     @Override public void onUserInteraction(){super.onUserInteraction();if(coffre!=null){coffre.toucher();if(!coffre.ouverte()&&!demandeConnexion)verrouiller();}}
     @Override protected void onResume(){super.onResume();if(coffre!=null&&coffre.ouverte()){try{coffre.exiger();}catch(Exception e){verrouiller();}}}
-    @Override protected void onDestroy(){fermee=true;horloge.removeCallbacksAndMessages(null);if(coffre!=null)coffre.verrouiller();if(web!=null){web.removeJavascriptInterface("Android");web.destroy();}travail.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){fermee=true;horloge.removeCallbacksAndMessages(null);if(coffre!=null)coffre.verrouiller();if(exportPdf!=null)exportPdf.fermer();pdfHtml="";if(web!=null){web.removeJavascriptInterface("Android");web.destroy();}travail.shutdownNow();super.onDestroy();}
     private void message(String s){runOnUiThread(()->{Toast.makeText(this,s,Toast.LENGTH_LONG).show();if(web!=null&&coffre.ouverte())web.evaluateJavascript("window.messageNatif&&messageNatif("+JSONObject.quote(s)+")",null);});}
     private String configuration(){try(InputStream in=getAssets().open("editeur.json")){return new String(Coffre.lire(in,100000),java.nio.charset.StandardCharsets.UTF_8);}catch(Exception e){return "{}";}}
     private interface Tache{Object run() throws Exception;}
     private String resultat(Tache t){try{return new JSONObject().put("ok",true).put("valeur",t.run()).toString();}catch(Exception e){if(!coffre.ouverte())verrouiller();try{return new JSONObject().put("ok",false).put("erreur",e.getMessage()==null?"Opération impossible.":e.getMessage()).toString();}catch(Exception ignore){return "{\"ok\":false}";}}}
     private void fond(String succes,Tache t){travail.execute(()->{try{t.run();message(succes);}catch(Exception e){message(e.getMessage()==null?"Opération impossible.":e.getMessage());}runOnUiThread(()->{if(coffre.ouverte())web.evaluateJavascript("window.actualiserReglages&&actualiserReglages()",null);});});}
-    @Override protected void onActivityResult(int req,int result,Intent data){super.onActivityResult(req,result,data);if(result!=RESULT_OK||data==null){if(req==22)connexion.afficher();if(req==30)csvEnAttente="";return;}
+    @Override protected void onActivityResult(int req,int result,Intent data){super.onActivityResult(req,result,data);if(result!=RESULT_OK||data==null){if(req==22)connexion.afficher();if(req==30)csvEnAttente="";if(req==31){pdfHtml="";pdfNom="";}return;}
+        if(req==31){try{coffre.exiger();exportPdf.choisir(data.getData(),data.getFlags());if(!pdfHtml.isEmpty())exportPdf.creer(pdfNom,pdfHtml);else message("Dossier PDF enregistré.");}catch(Exception e){message("Export PDF impossible : "+e.getMessage());}finally{pdfHtml="";pdfNom="";}}
         if(req==30){try{coffre.admin();try(OutputStream o=getContentResolver().openOutputStream(data.getData(),"wt")){if(o==null)throw new IOException("Destination inaccessible.");o.write(csvEnAttente.getBytes(java.nio.charset.StandardCharsets.UTF_8));}coffre.audit("Export CSV");message("Export enregistré. Ce fichier contient vos opérations en clair : partagez-le par un moyen privé.");}catch(Exception e){message("Export impossible : "+e.getMessage());}finally{csvEnAttente="";}}
         if(req==22){connexion.importer(data.getData());}
         if(req==20){Uri u=data.getData();fond("Dossier choisi. Première sauvegarde vérifiée.",()->{sauvegardes.choisir(u);return true;});}
@@ -82,26 +83,9 @@ public class MainActivity extends Activity {
                 startActivityForResult(i,13);
             });
         }
-        @JavascriptInterface public void pdf(String nom,String contenu) {
-            runOnUiThread(()-> {
-                if(impression!=null){message("Terminez le PDF en cours.");return;}
-                impression=new WebView(MainActivity.this);
-                impression.getSettings().setJavaScriptEnabled(false);
-                impression.getSettings().setBlockNetworkLoads(true);
-                impression.getSettings().setAllowFileAccess(false);
-                impression.getSettings().setAllowContentAccess(false);
-                impression.setWebViewClient(new WebViewClient() {
-                    @Override public void onPageFinished(WebView v,String url) {
-                        PrintManager manager=(PrintManager)getSystemService(PRINT_SERVICE);
-                        try {
-                            manager.print(nom,v.createPrintDocumentAdapter(nom),
-                                new PrintAttributes.Builder().setMediaSize(PrintAttributes.MediaSize.ISO_A4).build());
-                        } catch(Exception e) { message("Création PDF impossible : "+e.getMessage()); }
-                        impression=null;
-                    }
-                });
-                impression.loadDataWithBaseURL(null,contenu,"text/html","UTF-8",null);
-            });
-        }
+        @JavascriptInterface public void choisirDossierPdf(){runOnUiThread(()->{try{coffre.exiger();choisirPdf();}catch(Exception e){message(e.getMessage());}});}
+        @JavascriptInterface public void ouvrirDernierPdf(){runOnUiThread(()->{try{coffre.exiger();String uri=preferences.getString("dernier_pdf","");if(uri.isEmpty())throw new IOException("Exportez d’abord un document.");startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(uri),"application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));}catch(Exception e){message("Ouverture impossible : "+e.getMessage());}});}
+        @JavascriptInterface public void pdf(String nom,String contenu){runOnUiThread(()->{try{coffre.exiger();if(exportPdf.occupe()||!pdfHtml.isEmpty())throw new IOException("Terminez le PDF en cours.");if(!exportPdf.configure()){pdfNom=nom;pdfHtml=contenu;new AlertDialog.Builder(MainActivity.this).setTitle("Votre dossier de devis et factures").setMessage("Choisissez ou créez un dossier Patenteasy, par exemple dans Documents. Les prochains PDF y seront enregistrés automatiquement.").setPositiveButton("Choisir le dossier",(d,w)->choisirPdf()).setNegativeButton("Annuler",(d,w)->{pdfHtml="";pdfNom="";}).setOnCancelListener(d->{pdfHtml="";pdfNom="";}).show();}else exportPdf.creer(nom,contenu);}catch(Exception e){message(e.getMessage());}});}
     }
+    private void choisirPdf(){try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);startActivityForResult(i,31);}catch(Exception e){pdfHtml="";pdfNom="";message("Sélection du dossier impossible.");}}
 }
