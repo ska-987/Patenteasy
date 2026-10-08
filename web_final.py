@@ -122,7 +122,7 @@ def installer(app, templates, main):
 
     # Les validations des anciennes routes réaffichent désormais la nouvelle page.
     def afficher_detail(request,devis_id,saisie=None,erreur=None):
-        s=g.calculer(devis_id)
+        s=dict(g.calculer(devis_id));s.update(g.conditions_documents())
         r=vue(request,'document_devis.html',s=s,devis=db.obtenir_devis(devis_id),articles=db.lister_articles(),clients=db.lister_clients(),saisie=saisie or {},erreur=erreur)
         if erreur: r.status_code=400
         return r
@@ -130,8 +130,8 @@ def installer(app, templates, main):
     main.interface.afficher_detail_devis=afficher_detail
 
     @app.post('/devis/{devis_id}/entete')
-    def entete(devis_id:int,client_id:int=Form(...),date_devis:str=Form(...),objet:str=Form(''),validite:str=Form('30'),vente:str=Form(''),reglement:str=Form(''),mention:str=Form('')):
-        g.modifier_devis(devis_id,client_id,date_devis,objet,validite,vente,reglement,mention); return retour(f'/devis/{devis_id}')
+    def entete(devis_id:int,client_id:int=Form(...),date_devis:str=Form(...),objet:str=Form(''),validite:str=Form('30')):
+        g.modifier_devis(devis_id,client_id,date_devis,objet,validite); return retour(f'/devis/{devis_id}')
 
     @app.post('/devis/{devis_id}/emettre')
     def emettre(devis_id:int): g.emettre_devis(devis_id); return retour(f'/devis/{devis_id}')
@@ -159,7 +159,10 @@ def installer(app, templates, main):
         return vue(request,'factures.html',documents=docs)
 
     @app.get('/factures/{identifiant}')
-    def facture(request:Request,identifiant:int): return vue(request,'facture.html',document=g.document(identifiant))
+    def facture(request:Request,identifiant:int):
+        document = g.document(identifiant)
+        document['contenu'].update(g.conditions_documents())
+        return vue(request,'facture.html',document=document)
 
     @app.get('/factures/{identifiant}/pdf')
     def pdf_facture(identifiant:int):

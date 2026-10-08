@@ -81,9 +81,7 @@ def test_pages_et_formulaires_defilent(app, base):
     form.resize(560,300);form.show();app.processEvents()
     assert form.scroll.verticalScrollBar().maximum() > 0
     quote=ui.QuoteEditorDialog(base);quote.resize(900,500);quote.show();app.processEvents()
-    assert not quote.terms_panel.isVisible()
-    quote.terms_toggle.click();app.processEvents()
-    assert quote.terms_panel.isVisible()
+    assert not quote.findChildren(ui.QTextEdit)  # Les conditions se saisissent uniquement dans Réglages.
     assert quote.scroll.verticalScrollBar().maximum() > 0
     for widget in (settings,form,quote):widget.close()
 

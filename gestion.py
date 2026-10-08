@@ -112,10 +112,12 @@ class GestionDocuments:
                 raise ValueError('Choisissez un client existant.')
             e = dict(c.execute('SELECT * FROM entreprise WHERE id=1').fetchone())
             return c.execute("""INSERT INTO devis
-            (client_id,date_devis,objet,validite_jours,conditions_vente,conditions_reglement,mention_complementaire)
-            VALUES(?,?,?,?,?,?,?)""", (client_id, date_devis, objet.strip(), e['validite_devis_jours'], e['conditions_vente'], e['conditions_reglement'], e['mention_complementaire'])).lastrowid
+            (client_id,date_devis,objet,validite_jours)
+            VALUES(?,?,?,?)""", (client_id, date_devis, objet.strip(), e['validite_devis_jours'])).lastrowid
 
-    def modifier_devis(self, identifiant, client_id, date_devis, objet, validite, vente, reglement, mention):
+    def modifier_devis(self, identifiant, client_id, date_devis, objet, validite, vente='', reglement='', mention=''):
+        # Les arguments historiques restent compatibles ; seules les préférences
+        # de l'entreprise peuvent désormais définir les conditions des documents.
         date_devis = self.date_valide(date_devis)
         with self.connexion() as c:
             d = c.execute('SELECT * FROM devis WHERE id=?', (identifiant,)).fetchone()
@@ -123,8 +125,14 @@ class GestionDocuments:
                 raise ValueError('Seul un brouillon peut être modifié.')
             if not c.execute('SELECT id FROM clients WHERE id=?', (client_id,)).fetchone():
                 raise ValueError('Client introuvable.')
-            c.execute("""UPDATE devis SET client_id=?,date_devis=?,objet=?,validite_jours=?,
-            conditions_vente=?,conditions_reglement=?,mention_complementaire=? WHERE id=?""", (client_id, date_devis, objet.strip(), self.nombre_jours(validite), vente.strip(), reglement.strip(), mention.strip(), identifiant))
+            c.execute("""UPDATE devis SET client_id=?,date_devis=?,objet=?,validite_jours=?
+            WHERE id=?""", (client_id, date_devis, objet.strip(), self.nombre_jours(validite), identifiant))
+
+    def conditions_documents(self):
+        """Textes actuels des Réglages, indépendants des instantanés comptables."""
+        e = self.base.obtenir_entreprise() or {}
+        return {champ: e.get(champ, '').strip() for champ in
+                ('conditions_vente', 'conditions_reglement', 'mention_complementaire')}
 
     def regler_entreprise(self, validite, vente, reglement, mention, periodicite, solde, date_solde):
         if periodicite not in ('', 'mensuelle', 'trimestrielle'):

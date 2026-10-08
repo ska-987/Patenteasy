@@ -88,13 +88,12 @@ def test_separateurs_formats(base,app,fmt,chiffres,iso):
 def test_brouillon_survit_aux_lignes_et_fermeture(base,app):
     d=devis();window=ui.QuoteEditorDialog(d)
     window.objet.setText('Unsaved customer subject')
-    window.vente.setPlainText('Custom notes')
     window.date.entry.selectAll();QTest.keyClicks(window.date.entry,'0810')
     assert window.save_header(quiet=True,refresh=False)
     db.ajouter_ligne_devis(d,'Item','unit','1','10','0');window.refresh(keep_header=True)
     assert window.objet.text()=='Unsaved customer subject'
     window.close();again=ui.QuoteEditorDialog(d)
-    assert again.objet.text()=='Unsaved customer subject' and again.vente.toPlainText()=='Custom notes'
+    assert again.objet.text()=='Unsaved customer subject'
     assert g.lire_brouillon_ui(d)
     again.date.entry.selectAll();QTest.keyClicks(again.date.entry,'081026')
     assert again.save_header(refresh=False)

@@ -1052,24 +1052,11 @@ class QuoteEditorDialog(QDialog):
         self.date = make_date()
         self.objet = QLineEdit()
         self.validite = QSpinBox(); self.validite.setRange(1, 365)
-        self.vente = QTextEdit(); self.reglement = QTextEdit(); self.mention = QTextEdit()
         form.addWidget(QLabel(tr("Client")), 0, 0); form.addWidget(self.client, 0, 1)
         form.addWidget(QLabel(tr("Date")), 0, 2); form.addWidget(self.date, 0, 3)
         form.addWidget(QLabel(tr("Objet")), 1, 0); form.addWidget(self.objet, 1, 1, 1, 3)
         form.addWidget(QLabel(tr("Validité (jours)")), 2, 0); form.addWidget(self.validite, 2, 1)
         root.addWidget(header)
-        self.terms_panel = QGroupBox(tr("Textes du document · facultatifs"))
-        terms_form = QFormLayout(self.terms_panel)
-        for label, field in ((tr("Conditions de vente"), self.vente), (tr("Règlement"), self.reglement), (tr("Mention"), self.mention)):
-            field.setFixedHeight(85)
-            field.setPlaceholderText(tr("Facultatif"))
-            terms_form.addRow(label, field)
-        self.terms_toggle = button(tr("Conditions et mentions"), secondary=True)
-        self.terms_toggle.setCheckable(True)
-        self.terms_toggle.toggled.connect(self.terms_panel.setVisible)
-        root.addWidget(self.terms_toggle)
-        root.addWidget(self.terms_panel)
-        self.terms_panel.hide()
         linebar = QHBoxLayout()
         self.add_catalog_btn = button(tr("Ajouter du catalogue"), self.add_catalog)
         self.add_free_btn = button(tr("Ajouter une ligne libre"), self.add_free, secondary=True)
@@ -1098,20 +1085,22 @@ class QuoteEditorDialog(QDialog):
             actions.addWidget(b, i // 4, i % 4)
         outer.addWidget(close)
         root.addLayout(actions)
+        conditions_note = QLabel(tr("Les conditions facultatives se définissent dans Réglages et s’affichent en bas du PDF."))
+        conditions_note.setWordWrap(True)
+        root.addWidget(conditions_note)
         self.refresh()
         self._ready = True
         self.auto_save = QTimer(self);self.auto_save.setSingleShot(True);self.auto_save.setInterval(650)
         self.auto_save.timeout.connect(lambda:self.save_header(quiet=True,refresh=False))
         for entry in (self.objet,):entry.textChanged.connect(self.edited)
         self.date.entry.textChanged.connect(self.edited);self.client.currentIndexChanged.connect(self.edited);self.validite.valueChanged.connect(self.edited)
-        for entry in (self.vente,self.reglement,self.mention):entry.textChanged.connect(self.edited)
 
     def edited(self,*_):
         if self._loading:return
         self._dirty=True;self.save_state.setText(tr("Enregistrement…"));self.auto_save.start()
 
     def state(self):
-        return {'client_id':self.client.currentData(),'date':self.date.entry.text(),'objet':self.objet.text(),'validite':self.validite.value(),'vente':self.vente.toPlainText(),'reglement':self.reglement.toPlainText(),'mention':self.mention.toPlainText()}
+        return {'client_id':self.client.currentData(),'date':self.date.entry.text(),'objet':self.objet.text(),'validite':self.validite.value()}
 
     def closeEvent(self,event):
         if self._ready and self._dirty and not self.save_header(quiet=True,refresh=False):
@@ -1135,14 +1124,10 @@ class QuoteEditorDialog(QDialog):
             self.date.setDate(qdate_from_iso(d["date_devis"]))
             self.objet.setText(d["objet"])
             self.validite.setValue(d.get("validite_jours", 30))
-            self.vente.setPlainText(d.get("conditions_vente", ""))
-            self.reglement.setPlainText(d.get("conditions_reglement", ""))
-            self.mention.setPlainText(d.get("mention_complementaire", ""))
             pending=g.lire_brouillon_ui(self.quote_id) if d['statut']=='brouillon' else None
             if pending:
                 self.client.setCurrentIndex(max(0,self.client.findData(pending['client_id'])))
                 self.date.entry.setText(pending['date']);self.objet.setText(pending['objet']);self.validite.setValue(pending['validite'])
-                self.vente.setPlainText(pending['vente']);self.reglement.setPlainText(pending['reglement']);self.mention.setPlainText(pending['mention'])
                 self.save_state.setText(tr("Brouillon enregistré · vérifiez les champs incomplets."))
             else:self.save_state.setText(tr("Brouillon enregistré automatiquement.") if d['statut']=='brouillon' else tr("Document finalisé."))
         lines = s["lignes"]
@@ -1157,7 +1142,7 @@ class QuoteEditorDialog(QDialog):
         draft = d["statut"] == "brouillon"
         sent = d["statut"] == "envoye"
         accepted = d["statut"] == "accepte"
-        for w in [self.client, self.date, self.objet, self.validite, self.vente, self.reglement, self.mention]: w.setEnabled(draft)
+        for w in [self.client, self.date, self.objet, self.validite]: w.setEnabled(draft)
         for b in [self.save_btn, self.add_catalog_btn, self.add_free_btn, self.edit_line_btn, self.remove_line_btn]: b.setVisible(draft)
         self.emit_btn.setVisible(draft)
         self.accept_btn.setVisible(sent); self.refuse_btn.setVisible(sent)
@@ -1176,7 +1161,7 @@ class QuoteEditorDialog(QDialog):
             if not quiet:show_error(self,exc)
             return False
         try:
-            g.modifier_devis(self.quote_id,self.client.currentData(),iso_date(self.date),self.objet.text(),self.validite.value(),self.vente.toPlainText(),self.reglement.toPlainText(),self.mention.toPlainText())
+            g.modifier_devis(self.quote_id,self.client.currentData(),iso_date(self.date),self.objet.text(),self.validite.value())
             with g.connexion() as c:c.execute('DELETE FROM brouillons_ui WHERE devis_id=?',(self.quote_id,))
             self.save_state.setText(tr("Brouillon enregistré automatiquement."))
             if refresh:self.refresh(keep_header=True)
@@ -1696,6 +1681,8 @@ class SettingsPage(Page):
     def __init__(self,parent=None):
         super().__init__(tr("Préférences"),tr("Réglages"),tr("Personnalisez vos documents et votre suivi."),parent)
         docs=QGroupBox(tr("Documents"));f=QFormLayout(docs);self.validity=QSpinBox();self.validity.setRange(1,365);self.terms=QTextEdit();self.payment=QTextEdit();self.note=QTextEdit();
+        explication = QLabel(tr("Conditions facultatives : affichées en bas des devis et factures. Les changements s’appliquent aussi aux documents existants lors du prochain aperçu ou export PDF. Laissez un champ vide pour ne pas l’afficher."))
+        explication.setWordWrap(True);f.addRow(explication)
         for field in (self.terms,self.payment,self.note):
             field.setFixedHeight(90);field.setPlaceholderText(tr("Facultatif — texte à afficher sur les documents"))
         f.addRow(tr("Validité des devis · jours"),self.validity);f.addRow(tr("Conditions de vente (facultatif)"),self.terms);f.addRow(tr("Règlement (facultatif)"),self.payment);f.addRow(tr("Mentions complémentaires"),self.note);self.layout.addWidget(docs)

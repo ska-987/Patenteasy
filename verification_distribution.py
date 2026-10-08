@@ -51,6 +51,18 @@ def verifier(rapport):
             assert db.obtenir_devis(devis)['statut'] == 'envoye'
             g.decision_devis(devis, "accepte")
             facture = g.creer_facture(devis, jour, jour)
+            instantane = g.document(facture)
+            g.regler_entreprise(30, 'Conditions ajoutées après émission', 'Paiement convenu', '', '', '0', '')
+            fichier.write_bytes(generer(g.document(facture)['contenu']))
+            controle_conditions = QPdfDocument()
+            assert controle_conditions.load(str(fichier)) == QPdfDocument.Error.None_
+            derniere_page = controle_conditions.pageCount() - 1
+            texte_conditions = controle_conditions.getAllText(derniere_page).text()
+            assert 'Sales terms' in texte_conditions and 'Payment terms' in texte_conditions
+            assert 'Conditions ajoutées après émission' in texte_conditions
+            controle_conditions.close()
+            g.regler_entreprise(30, '', '', '', '', '0', '')
+            assert g.document(facture) == instantane
             facture_ui = InvoiceDialog(facture)
             assert callable(facture_ui.preview_pdf) and callable(facture_ui.export_pdf)
             import qt_app
@@ -87,6 +99,8 @@ def verifier(rapport):
                 exports_pdf.preferences, QStandardPaths.writableLocation, QMessageBox.exec, QFileDialog.exec = originales
             autre = g.dupliquer_devis(devis)
             ecrans = [FiscalPage(), SettingsPage(), QuoteEditorDialog(autre), facture_ui]
+            from PySide6.QtWidgets import QTextEdit
+            assert not ecrans[2].findChildren(QTextEdit)
             for ecran in ecrans:
                 ecran.resize(900, 500); ecran.show(); app.processEvents(); ecran.close(); ecran.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -125,7 +139,8 @@ def verifier(rapport):
             resultat = {'ok': True, 'version': VERSION, 'qt': True, 'chiffrement': True,
                         'pdf': True, 'apercu_pdf': True, 'taxe': True, 'documents': True,
                         'profil_general': True, 'sauvegarde_nouveau_pc': True, 'ouverture_facture': True,
-                        'exports_pdf_bureau': True}
+                        'exports_pdf_bureau': True, 'conditions_reglages': True,
+                        'conditions_documents_existants': True}
     except Exception:
         resultat['erreur'] = traceback.format_exc()
     Path(rapport).write_text(json.dumps(resultat, ensure_ascii=False, indent=2), encoding='utf-8')
