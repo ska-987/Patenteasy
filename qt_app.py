@@ -82,8 +82,8 @@ class QComboBox(_BaseComboBox):
 
 ROOT = Path(__file__).resolve().parent
 MOIS = [
-    tr("Janvier"), tr("Février"), tr(tr("Mars")), tr(tr("Avril")), tr(tr("Mai")), tr(tr("Juin")),
-    tr("Juillet"), tr("Août"), tr(tr("Septembre")), tr(tr("Octobre")), tr(tr("Novembre")), tr(tr("Décembre")),
+    tr("Janvier"), tr("Février"), tr("Mars"), tr("Avril"), tr("Mai"), tr("Juin"),
+    tr("Juillet"), tr("Août"), tr("Septembre"), tr("Octobre"), tr("Novembre"), tr("Décembre"),
 ]
 
 APP_QSS = r"""
@@ -309,7 +309,7 @@ def iso_date(widget: DateInput) -> str:
 
 
 def button(text: str, slot=None, *, secondary=False, danger=False) -> QPushButton:
-    b = QPushButton(text)
+    b = QPushButton(tr(text))
     if secondary:
         b.setProperty("secondary", True)
     if danger:
@@ -363,7 +363,7 @@ class TableInteraction(QObject):
 
 def configure_table(table: QTableWidget, headers: list[str], stretch_last=True):
     table.setColumnCount(len(headers))
-    table.setHorizontalHeaderLabels(headers)
+    table.setHorizontalHeaderLabels([tr(h) for h in headers])
     table.setAlternatingRowColors(True)
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -445,7 +445,7 @@ def export_journal_csv(parent) -> Path | None:
         return None
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
-    writer.writerow([tr("Date"), tr("Libellé"), tr(tr("Type")), "Montant " + regional.configuration()["devise"]])
+    writer.writerow([tr("Date"), tr("Libellé"), tr("Type"), "Montant " + regional.configuration()["devise"]])
     for op in db.lister_operations(g.aujourd_hui().year):
         writer.writerow([op["date_operation"], op["libelle"], op["type_operation"], money_text(op["montant_centiemes"])])
     Path(path).write_text("\ufeff" + output.getvalue(), encoding="utf-8")
@@ -489,9 +489,9 @@ class Page(QWidget):
         self.layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         self.layout.setContentsMargins(32, 26, 32, 40)
         self.layout.setSpacing(14)
-        eye = QLabel(eyebrow.upper())
+        eye = QLabel(tr(eyebrow).upper())
         eye.setObjectName("eyebrow")
-        heading = QLabel(title)
+        heading = QLabel(tr(title))
         heading.setObjectName("title")
         self.layout.addWidget(eye)
         self.heading_row = QHBoxLayout()
@@ -499,7 +499,7 @@ class Page(QWidget):
         self.heading_row.addStretch()
         self.layout.addLayout(self.heading_row)
         if lead:
-            l = QLabel(lead)
+            l = QLabel(tr(lead))
             l.setObjectName("lead")
             l.setWordWrap(True)
             self.layout.addWidget(l)
@@ -511,7 +511,7 @@ class Page(QWidget):
 class FormDialog(QDialog):
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(title)
+        self.setWindowTitle(tr(title))
         self.setMinimumWidth(520)
         self.root = QVBoxLayout(self)
         self.scroll = QScrollArea()
@@ -564,8 +564,8 @@ class ArticleDialog(FormDialog):
         self.form.addRow(tr("Désignation *"), self.designation)
         self.form.addRow(tr("Type"), self.type_article)
         self.form.addRow(tr("Unité"), self.unite)
-        self.form.addRow("Prix d’achat · " + regional.configuration()["devise"] + "", self.achat)
-        self.form.addRow("Prix de vente HT · " + regional.configuration()["devise"] + "", self.vente)
+        self.form.addRow(tr("Prix d’achat · " + regional.configuration()["devise"] + ""), self.achat)
+        self.form.addRow(tr("Prix de vente HT · " + regional.configuration()["devise"] + ""), self.vente)
         self.form.addRow(tr("Taxe à la vente · %"), self.taxe)
 
     def values(self):
@@ -589,7 +589,7 @@ class OperationDialog(FormDialog):
         self.form.addRow(tr("Date"), self.date)
         self.form.addRow(tr("Libellé"), self.libelle)
         self.form.addRow(tr("Type"), self.type)
-        self.form.addRow("Montant · " + regional.configuration()["devise"] + "", self.montant)
+        self.form.addRow(tr("Montant · " + regional.configuration()["devise"] + ""), self.montant)
 
     def values(self):
         return iso_date(self.date), self.libelle.text(), self.type.currentData(), self.montant.text()
@@ -631,7 +631,7 @@ class QuoteLineDialog(FormDialog):
         self.form.addRow(tr("Désignation *"), self.designation)
         self.form.addRow(tr("Unité *"), self.unite)
         self.form.addRow("Quantité *", self.quantite)
-        self.form.addRow("Prix unitaire HT · " + regional.configuration()["devise"] + "", self.prix)
+        self.form.addRow(tr("Prix unitaire HT · " + regional.configuration()["devise"] + ""), self.prix)
         self.form.addRow(tr("Taxe · %"), self.taxe)
         if allow_catalog:
             self.form.addRow("", self.catalogue)
@@ -667,12 +667,12 @@ class PaymentDialog(FormDialog):
         self.date = make_date(g.aujourd_hui().isoformat())
         self.amount = QLineEdit()
         self.mode = QComboBox()
-        for text, key in [(tr("Virement"), "virement"), (tr("Carte"), "carte"), (tr("Espèces"), "especes"), (tr(tr("Chèque")), "cheque"), (tr(tr("Autre")), "autre")]:
+        for text, key in [(tr("Virement"), "virement"), (tr("Carte"), "carte"), (tr("Espèces"), "especes"), (tr("Chèque"), "cheque"), (tr("Autre"), "autre")]:
             self.mode.addItem(text, key)
         self.reference = QLineEdit()
         self.reference.setVisible(not refund)
         self.form.addRow(tr("Date"), self.date)
-        self.form.addRow("Montant · " + regional.configuration()["devise"] + "", self.amount)
+        self.form.addRow(tr("Montant · " + regional.configuration()["devise"] + ""), self.amount)
         self.form.addRow(tr("Moyen"), self.mode)
         if not refund:
             self.form.addRow(tr("Référence"), self.reference)
@@ -694,7 +694,7 @@ class CreditDialog(QDialog):
         root.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         self.scroll.setWidget(body)
         outer.addWidget(self.scroll)
-        intro = QLabel("Indiquez les quantités à créditer. Laissez 0 pour une ligne non concernée.")
+        intro = QLabel(tr("Indiquez les quantités à créditer. Laissez 0 pour une ligne non concernée."))
         intro.setWordWrap(True)
         root.addWidget(intro)
         self.fields = {}
@@ -821,7 +821,7 @@ def proposer_nouveautes(parent):
 
 class DashboardPage(Page):
     def __init__(self, parent=None):
-        super().__init__(tr("Votre activité"), tr(tr("Tableau de bord")), "Votre activité en " + regional.configuration()["devise"] + "", parent)
+        super().__init__(tr("Votre activité"), tr("Tableau de bord"), "Votre activité en " + regional.configuration()["devise"] + "", parent)
         self.donation_button = button(tr("Faire un don"), self.donate, secondary=True)
         self.donation_button.setObjectName("donationButton")
         self.donation_button.setToolTip("Soutenir ska_987 sur PayPal — contribution facultative")
@@ -853,9 +853,9 @@ class DashboardPage(Page):
         grid = QGridLayout()
         self.unpaid = QTableWidget()
         self.unpaid.doubleClicked.connect(self.open_invoice)
-        configure_table(self.unpaid, [tr("Facture / client"), tr("Reste dû"), tr(tr("Échéance"))])
+        configure_table(self.unpaid, [tr("Facture / client"), tr("Reste dû"), tr("Échéance")])
         self.reminders = QTableWidget()
-        configure_table(self.reminders, [tr("Échéance"), tr(tr("Rappel"))])
+        configure_table(self.reminders, [tr("Échéance"), tr("Rappel")])
         box1 = QGroupBox(tr("Factures à encaisser"))
         l1 = QVBoxLayout(box1); l1.addWidget(self.unpaid);l1.addWidget(button(tr("Préparer une relance"),self.relance,secondary=True))
         box2 = QGroupBox(tr("Prochaines échéances"))
@@ -936,7 +936,7 @@ class DashboardPage(Page):
 
 class ClientsPage(Page):
     def __init__(self, parent=None):
-        super().__init__(tr("Répertoire"), tr(tr("Clients")), tr(tr("Coordonnées utilisées dans les devis et factures.")), parent)
+        super().__init__(tr("Répertoire"), tr("Clients"), tr("Coordonnées utilisées dans les devis et factures."), parent)
         bar = QHBoxLayout()
         bar.addWidget(button(tr("Ajouter un client"), self.add))
         bar.addWidget(button(tr("Modifier"), self.edit, secondary=True))
@@ -944,7 +944,7 @@ class ClientsPage(Page):
         self.layout.addLayout(bar)
         self.recherche=QLineEdit();self.recherche.setPlaceholderText(tr("Rechercher par nom ou numéro"));self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
         self.table = QTableWidget()
-        configure_table(self.table, [tr("Nom"), tr("Téléphone"), tr(tr("E-mail")), tr(tr("Adresse"))])
+        configure_table(self.table, [tr("Nom"), tr("Téléphone"), tr("E-mail"), tr("Adresse")])
         self.table.doubleClicked.connect(self.edit)
         self.layout.addWidget(self.table)
 
@@ -982,7 +982,7 @@ class ArticlesPage(Page):
         bar.addStretch()
         self.layout.addLayout(bar)
         self.table = QTableWidget()
-        configure_table(self.table, [tr("Référence"), tr(tr("Désignation")), tr(tr("Type")), tr(tr("Unité")), tr(tr("Achat")), tr(tr("Vente HT")), tr(tr("Taxe %"))])
+        configure_table(self.table, [tr("Référence"), tr("Désignation"), tr("Type"), tr("Unité"), tr("Achat"), tr("Vente HT"), tr("Taxe %")])
         self.table.doubleClicked.connect(self.edit)
         self.layout.addWidget(self.table)
 
@@ -1051,7 +1051,7 @@ class QuoteEditorDialog(QDialog):
         root.addWidget(header)
         self.terms_panel = QGroupBox(tr("Textes du document · facultatifs"))
         terms_form = QFormLayout(self.terms_panel)
-        for label, field in ((tr("Conditions de vente"), self.vente), (tr("Règlement"), self.reglement), (tr(tr("Mention")), self.mention)):
+        for label, field in ((tr("Conditions de vente"), self.vente), (tr("Règlement"), self.reglement), (tr("Mention"), self.mention)):
             field.setFixedHeight(85)
             field.setPlaceholderText(tr("Facultatif"))
             terms_form.addRow(label, field)
@@ -1070,7 +1070,7 @@ class QuoteEditorDialog(QDialog):
         linebar.addStretch()
         root.addLayout(linebar)
         self.lines = QTableWidget()
-        configure_table(self.lines, [tr("Désignation"), tr(tr("Quantité")), tr(tr("Prix HT")), tr(tr("Taxe %")), tr(tr("Total HT")), tr(tr("Réf."))])
+        configure_table(self.lines, [tr("Désignation"), tr("Quantité"), tr("Prix HT"), tr("Taxe %"), tr("Total HT"), tr("Réf.")])
         self.lines.doubleClicked.connect(self.edit_line)
         root.addWidget(self.lines, 1)
         self.total = QLabel(); self.total.setWordWrap(True); self.total.setProperty("class", "metricValue"); self.total.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -1118,7 +1118,7 @@ class QuoteEditorDialog(QDialog):
         if not d:
             self.reject(); return
         s = g.calculer(self.quote_id)
-        self.status.setText(f'Devis {d.get("numero") or "brouillon #" + str(d["id"])} · {d["statut"]} · {d["nom_client"]}')
+        self.status.setText(tr("Devis")+" "+(d.get("numero") or tr("brouillon")+" #"+str(d["id"]))+" · "+tr(d["statut"])+" · "+d["nom_client"])
         if not keep_header:
             idx = self.client.findData(d["client_id"])
             if idx >= 0: self.client.setCurrentIndex(idx)
@@ -1134,15 +1134,15 @@ class QuoteEditorDialog(QDialog):
                 self.date.entry.setText(pending['date']);self.objet.setText(pending['objet']);self.validite.setValue(pending['validite'])
                 self.vente.setPlainText(pending['vente']);self.reglement.setPlainText(pending['reglement']);self.mention.setPlainText(pending['mention'])
                 self.save_state.setText(tr("Brouillon enregistré · vérifiez les champs incomplets."))
-            else:self.save_state.setText(tr("Brouillon enregistré automatiquement.") if d['statut']=='brouillon' else tr(tr("Document finalisé.")))
+            else:self.save_state.setText(tr("Brouillon enregistré automatiquement.") if d['statut']=='brouillon' else tr("Document finalisé."))
         lines = s["lignes"]
         fill_table(self.lines, [[x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["prix_unitaire_centiemes"]), decimal_text(x["taxe_centiemes"]), fcfp(x["ht"]), x["reference"]] for x in lines], [x["id"] for x in lines])
         regime = s.get("regime")
-        total = f'Total HT : {fcfp(s["ht"])}'
+        total = tr("Total HT : ")+fcfp(s["ht"])
         if regime:
-            total += f'   ·   Taxe : {fcfp(s["tva"])}   ·   Total : {fcfp(s["ttc"])}'
+            total += "   ·   "+regional.configuration()["nom_taxe"]+" : "+fcfp(s["tva"])+"   ·   "+tr("Total")+" : "+fcfp(s["ttc"])
         else:
-            total += f'   ·   Total : {fcfp(s["ttc"])} · Sans Taxe calculée'
+            total += "   ·   "+tr("Total")+" : "+fcfp(s["ttc"])+" · "+tr("Sans taxe calculée")
         self.total.setText(total)
         draft = d["statut"] == "brouillon"
         sent = d["statut"] == "envoye"
@@ -1282,7 +1282,7 @@ class QuotesPage(Page):
         bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True))
         bar.addStretch(); self.layout.addLayout(bar)
         self.recherche=QLineEdit();self.recherche.setPlaceholderText(tr("Rechercher par nom ou numéro"));self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
-        self.table = QTableWidget(); configure_table(self.table, [tr("N°"), tr(tr("Date")), tr(tr("Client")), tr(tr("Objet")), tr(tr("État"))])
+        self.table = QTableWidget(); configure_table(self.table, [tr("N°"), tr("Date"), tr("Client"), tr("Objet"), tr("État")])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)
 
     def refresh(self):
@@ -1330,7 +1330,7 @@ class InvoiceDialog(QDialog):
         outer.addWidget(self.scroll)
         self.heading = QLabel(); self.heading.setObjectName("title"); root.addWidget(self.heading)
         self.metrics = QLabel(); self.metrics.setObjectName("lead"); root.addWidget(self.metrics)
-        self.lines = QTableWidget(); configure_table(self.lines, [tr("Désignation"), tr(tr("Quantité")), tr(tr("Total HT"))]); root.addWidget(self.lines, 1)
+        self.lines = QTableWidget(); configure_table(self.lines, [tr("Désignation"), tr("Quantité"), tr("Total HT")]); root.addWidget(self.lines, 1)
         self.payments = QTableWidget(); configure_table(self.payments, [tr("Date"), tr("Montant"), tr("Moyen"), tr("Référence")])
         box = QGroupBox(tr("Paiements enregistrés")); boxl = QVBoxLayout(box); boxl.addWidget(self.payments); root.addWidget(box)
         bar = QHBoxLayout()
@@ -1397,7 +1397,7 @@ class InvoicesPage(Page):
         self.recherche.returnPressed.connect(self.refresh)
         bar = QHBoxLayout(); bar.addWidget(self.recherche); bar.addWidget(button(tr("Rechercher"), self.refresh)); bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True))
         self.layout.addLayout(bar)
-        self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr(tr("Date")), tr(tr("Client")), tr(tr("Total")), tr(tr("Réglé")), tr(tr("Reste"))])
+        self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr("Date"), tr("Client"), tr("Total"), tr("Réglé"), tr("Reste")])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)
 
     def refresh(self):
@@ -1427,12 +1427,12 @@ class JournalPage(Page):
     def __init__(self, parent=None):
         super().__init__(tr("Trésorerie"), tr("Recettes et dépenses"), tr("Notez vos recettes et vos dépenses."), parent)
         top=QHBoxLayout(); self.year=QSpinBox(); self.year.setRange(1900, 9999); self.year.setValue(g.aujourd_hui().year); self.year.valueChanged.connect(self.refresh)
-        top.addWidget(QLabel(tr("Année")));top.addWidget(self.year);top.addWidget(button(tr(tr("Ajouter une opération")),self.add));top.addWidget(button(tr(tr("Modifier")),self.edit,secondary=True));top.addWidget(button(tr(tr("Supprimer")),self.delete,danger=True));top.addWidget(button(tr("Exporter CSV"),self.exporter_csv,secondary=True));top.addStretch();self.layout.addLayout(top)
+        top.addWidget(QLabel(tr("Année")));top.addWidget(self.year);top.addWidget(button(tr("Ajouter une opération"),self.add));top.addWidget(button(tr("Modifier"),self.edit,secondary=True));top.addWidget(button(tr("Supprimer"),self.delete,danger=True));top.addWidget(button(tr("Exporter CSV"),self.exporter_csv,secondary=True));top.addStretch();self.layout.addLayout(top)
         metrics=QHBoxLayout();self.rec=MetricCard(tr("Recettes"));self.dep=MetricCard(tr("Dépenses"));self.diff=MetricCard(tr("Différence"))
         for m in [self.rec,self.dep,self.diff]:metrics.addWidget(m)
         self.layout.addLayout(metrics)
         self.alert=QLabel();self.alert.setWordWrap(True);self.layout.addWidget(self.alert)
-        self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr(tr("Type")),tr("Montant")]);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
+        self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr("Type"),tr("Montant")]);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
 
     def refresh(self,*_):
         year=self.year.value(); summary=db.obtenir_resume_annuel(year);self.rec.value.setText(fcfp(summary["recettes"]));self.dep.value.setText(fcfp(summary["depenses"]));self.diff.value.setText(fcfp(summary["difference"]));self.alert.setText("\n".join("• "+a for a in summary.get("alertes",[])))
@@ -1476,8 +1476,8 @@ class StockPage(Page):
     def __init__(self,parent=None):
         super().__init__(tr("Inventaire"),tr("Stock"),tr("Suivez les quantités de vos produits."),parent)
         bar=QHBoxLayout();bar.addWidget(button(tr("Nouveau mouvement"),self.move));bar.addStretch();self.layout.addLayout(bar)
-        self.table=QTableWidget();configure_table(self.table,[tr("Référence"),tr(tr("Produit")),tr(tr("Unité")),tr(tr("Stock"))]);self.layout.addWidget(self.table)
-        self.movements=QTableWidget();configure_table(self.movements,[tr("Date"),tr("Produit"),tr("Quantité"),tr(tr("Motif"))])
+        self.table=QTableWidget();configure_table(self.table,[tr("Référence"),tr("Produit"),tr("Unité"),tr("Stock")]);self.layout.addWidget(self.table)
+        self.movements=QTableWidget();configure_table(self.movements,[tr("Date"),tr("Produit"),tr("Quantité"),tr("Motif")])
         box=QGroupBox(tr("Mouvements récents"));bl=QVBoxLayout(box);bl.addWidget(self.movements);self.layout.addWidget(box)
 
     def refresh(self):
@@ -1497,7 +1497,7 @@ class RemindersPage(Page):
     def __init__(self,parent=None):
         super().__init__(tr("Organisation"),tr("Échéances"),tr("Retrouvez vos prochaines dates importantes."),parent)
         bar=QHBoxLayout();bar.addWidget(button(tr("Ajouter"),self.add));bar.addWidget(button(tr("Basculer fait / à faire"),self.toggle,secondary=True));self.import_local=button("Importer Taxe 2026 · Polynésie",self.import_2026,secondary=True);self.import_local.setVisible(regional.configuration()["pays"]=="PF");bar.addWidget(self.import_local);bar.addStretch();self.layout.addLayout(bar)
-        self.table=QTableWidget();configure_table(self.table,[tr("Échéance"),tr("Titre"),tr(tr("État")),tr("Source")]);self.layout.addWidget(self.table)
+        self.table=QTableWidget();configure_table(self.table,[tr("Échéance"),tr("Titre"),tr("État"),tr("Source")]);self.layout.addWidget(self.table)
 
     def refresh(self):
         rows=g.liste('SELECT * FROM rappels ORDER BY fait,echeance');fill_table(self.table,[[x["echeance"],x["titre"],tr("Fait") if x["fait"] else tr("À faire"),x["source"]] for x in rows],[x["id"] for x in rows])
@@ -1537,10 +1537,10 @@ class RemindersPage(Page):
 
 class CompanyPage(Page):
     def __init__(self,parent=None):
-        super().__init__(tr("Identité"),tr(tr("Mon entreprise")),tr("Identité et formats utilisés dans vos documents."),parent)
+        super().__init__(tr("Identité"),tr("Mon entreprise"),tr("Identité et formats utilisés dans vos documents."),parent)
         card=QGroupBox(tr("Coordonnées"));form=QFormLayout(card)
         self.nom=QLineEdit();self.responsable=QLineEdit();self.tel=QLineEdit();self.email=QLineEdit();self.adresse=QTextEdit();self.tahiti=QLineEdit();self.rcs=QLineEdit()
-        for label,w in [(tr("Nom de l’entreprise *"),self.nom),(tr(tr("Responsable")),self.responsable),(tr(tr("Téléphone")),self.tel),(tr(tr("E-mail")),self.email),(tr(tr("Adresse")),self.adresse),(tr(tr("Identifiant professionnel (facultatif)")),self.tahiti),(tr(tr("Registre / autre identifiant (facultatif)")),self.rcs)]:form.addRow(label,w)
+        for label,w in [(tr("Nom de l’entreprise *"),self.nom),(tr("Responsable"),self.responsable),(tr("Téléphone"),self.tel),(tr("E-mail"),self.email),(tr("Adresse"),self.adresse),(tr("Identifiant professionnel (facultatif)"),self.tahiti),(tr("Registre / autre identifiant (facultatif)"),self.rcs)]:form.addRow(label,w)
         self.layout.addWidget(card)
         formats=QGroupBox(tr("Pays et formats"));f=QFormLayout(formats)
         self.pays=QComboBox();self.pays.addItem(tr("Profil général · pays non renseigné"), "")
@@ -1555,11 +1555,11 @@ class CompanyPage(Page):
         self.format_date=QComboBox()
         for key,label in regional.FORMATS.items():self.format_date.addItem(label,key)
         self.nom_taxe=QLineEdit();self.mention_exoneree=QLineEdit();self.libelle_identifiant=QLineEdit()
-        for label,w in [(tr("Pays"),self.pays),(tr("Devise · code de trois lettres"),self.devise),(tr(tr("Décimales des montants")),self.precision),(tr(tr("Langue")),self.langue),(tr(tr("Format des dates")),self.format_date),(tr(tr("Nom de la taxe")),self.nom_taxe),(tr(tr("Mention sans taxe (facultatif)")),self.mention_exoneree),(tr(tr("Libellé de l’identifiant")),self.libelle_identifiant)]:f.addRow(label,w)
+        for label,w in [(tr("Pays"),self.pays),(tr("Devise · code de trois lettres"),self.devise),(tr("Décimales des montants"),self.precision),(tr("Langue"),self.langue),(tr("Format des dates"),self.format_date),(tr("Nom de la taxe"),self.nom_taxe),(tr("Mention sans taxe (facultatif)"),self.mention_exoneree),(tr("Libellé de l’identifiant"),self.libelle_identifiant)]:f.addRow(label,w)
         note=QLabel(tr("Choisissez la devise et sa précision avant de saisir vos premiers montants. Les taxes sont définies par vos choix ; les rappels locaux sont informatifs."));note.setWordWrap(True);f.addRow(note)
         self.layout.addWidget(formats);self.layout.addWidget(button(tr("Enregistrer les coordonnées et formats"),self.save))
         self.saved=QLabel();self.saved.setWordWrap(True);self.layout.addWidget(self.saved)
-        box=QGroupBox(tr("Début d’activité (facultatif)"));fl=QFormLayout(box);self.start=DateInput(optional=True);fl.addRow(tr(tr("Date")),self.start);self.layout.addWidget(box);self.layout.addWidget(button(tr(tr("Enregistrer la date de début")),self.save_start,secondary=True));self.layout.addStretch()
+        box=QGroupBox(tr("Début d’activité (facultatif)"));fl=QFormLayout(box);self.start=DateInput(optional=True);fl.addRow(tr("Date"),self.start);self.layout.addWidget(box);self.layout.addWidget(button(tr("Enregistrer la date de début"),self.save_start,secondary=True));self.layout.addStretch()
 
     def refresh(self):
         e=db.obtenir_entreprise() or {};cfg=regional.configuration(e)
@@ -1584,7 +1584,7 @@ class CompanyPage(Page):
 
 class RepriseMonthDialog(FormDialog):
     def __init__(self,year,month,data=None,parent=None):
-        super().__init__(f"Reprise · {MOIS[month-1]} {year}",parent);data=data or {};self.rec=QLineEdit(money_text(data.get('recettes_centiemes')));self.dep=QLineEdit(money_text(data.get('depenses_centiemes')));self.checked=QCheckBox(tr(tr("Montants vérifiés")));self.checked.setChecked(bool(data.get('verifie')));self.form.addRow("Recettes · " + regional.configuration()["devise"] + "",self.rec);self.form.addRow("Dépenses · " + regional.configuration()["devise"] + "",self.dep);self.form.addRow("",self.checked)
+        super().__init__(f"Reprise · {MOIS[month-1]} {year}",parent);data=data or {};self.rec=QLineEdit(money_text(data.get('recettes_centiemes')));self.dep=QLineEdit(money_text(data.get('depenses_centiemes')));self.checked=QCheckBox(tr("Montants vérifiés"));self.checked.setChecked(bool(data.get('verifie')));self.form.addRow(tr("Recettes · " + regional.configuration()["devise"] + ""),self.rec);self.form.addRow(tr("Dépenses · " + regional.configuration()["devise"] + ""),self.dep);self.form.addRow("",self.checked)
     def values(self):return self.rec.text(),self.dep.text(),self.checked.isChecked()
 
 
@@ -1592,10 +1592,10 @@ class RecoveryPage(Page):
     def __init__(self,parent=None):
         super().__init__(tr("Historique"),tr("Reprise de données"),tr("Ajoutez les montants des mois précédents une seule fois."),parent)
         top=QHBoxLayout();self.year=QSpinBox();self.year.setRange(1900,9999);self.year.setValue(g.aujourd_hui().year);self.year.valueChanged.connect(self.refresh);top.addWidget(QLabel(tr("Année")));top.addWidget(self.year);top.addStretch();self.layout.addLayout(top)
-        settings=QGroupBox(tr("Période et situation antérieure"));f=QFormLayout(settings);self.end=make_date();self.ca_n1=QLineEdit();f.addRow(tr(tr("Date de fin de reprise")),self.end);f.addRow("CA année N−1 · " + regional.configuration()["devise"] + "",self.ca_n1);self.layout.addWidget(settings)
-        buttons=QHBoxLayout();buttons.addWidget(button(tr("Enregistrer la période"),self.save_end));buttons.addWidget(button(tr(tr("Enregistrer CA N−1")),self.save_ca,secondary=True));buttons.addWidget(button(tr(tr("Taxe et CA")),lambda:self.navigate.emit("fiscalite"),secondary=True));buttons.addStretch();self.layout.addLayout(buttons)
+        settings=QGroupBox(tr("Période et situation antérieure"));f=QFormLayout(settings);self.end=make_date();self.ca_n1=QLineEdit();f.addRow(tr("Date de fin de reprise"),self.end);f.addRow(tr("CA année N−1 · " + regional.configuration()["devise"] + ""),self.ca_n1);self.layout.addWidget(settings)
+        buttons=QHBoxLayout();buttons.addWidget(button(tr("Enregistrer la période"),self.save_end));buttons.addWidget(button(tr("Enregistrer CA N−1"),self.save_ca,secondary=True));buttons.addWidget(button(tr("Taxe et CA"),lambda:self.navigate.emit("fiscalite"),secondary=True));buttons.addStretch();self.layout.addLayout(buttons)
         self.status=QLabel();self.status.setWordWrap(True);self.layout.addWidget(self.status)
-        self.table=QTableWidget();configure_table(self.table,[tr("Mois"),tr("Recettes"),tr("Dépenses"),tr(tr("Vérifié"))]);self.table.doubleClicked.connect(self.edit_month);self.layout.addWidget(self.table)
+        self.table=QTableWidget();configure_table(self.table,[tr("Mois"),tr("Recettes"),tr("Dépenses"),tr("Vérifié")]);self.table.doubleClicked.connect(self.edit_month);self.layout.addWidget(self.table)
         self.layout.addWidget(QLabel(tr("Double-cliquez un mois pour saisir ou corriger ses montants.")))
 
     def refresh(self,*_):
@@ -1622,7 +1622,7 @@ class RecoveryPage(Page):
 
 class FiscalPage(Page):
     def __init__(self, parent=None):
-        super().__init__(tr("Votre activité"), tr(tr("Taxe et chiffre d’affaires")), tr(tr("Choisissez la Taxe utilisée pour vos documents.")), parent)
+        super().__init__(tr("Votre activité"), tr("Taxe et chiffre d’affaires"), tr("Choisissez la Taxe utilisée pour vos documents."), parent)
         card = QGroupBox(tr("Choix pour l’année"))
         form = QFormLayout(card)
         self.year = QSpinBox()
@@ -1640,7 +1640,7 @@ class FiscalPage(Page):
         self.ca.setPlaceholderText(tr("Facultatif"))
         form.addRow(tr("Année"), self.year)
         form.addRow(tr("Taxe"), row)
-        form.addRow("CA annuel · " + regional.configuration()["devise"] + "", self.ca)
+        form.addRow(tr("CA annuel · " + regional.configuration()["devise"] + ""), self.ca)
         self.layout.addWidget(card)
         self.layout.addWidget(button(tr("Enregistrer"), self.save))
         self.proposal = QLabel()
@@ -1671,12 +1671,12 @@ class FiscalPage(Page):
 
 class SettingsPage(Page):
     def __init__(self,parent=None):
-        super().__init__(tr("Préférences"),tr(tr("Réglages")),tr(tr("Personnalisez vos documents et votre suivi.")),parent)
+        super().__init__(tr("Préférences"),tr("Réglages"),tr("Personnalisez vos documents et votre suivi."),parent)
         docs=QGroupBox(tr("Documents"));f=QFormLayout(docs);self.validity=QSpinBox();self.validity.setRange(1,365);self.terms=QTextEdit();self.payment=QTextEdit();self.note=QTextEdit();
         for field in (self.terms,self.payment,self.note):
             field.setFixedHeight(90);field.setPlaceholderText(tr("Facultatif — texte à afficher sur les documents"))
-        f.addRow(tr("Validité des devis · jours"),self.validity);f.addRow(tr(tr("Conditions de vente (facultatif)")),self.terms);f.addRow(tr(tr("Règlement (facultatif)")),self.payment);f.addRow(tr(tr("Mentions complémentaires")),self.note);self.layout.addWidget(docs)
-        tva=QGroupBox(tr("Taxe et trésorerie"));tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem(tr(tr("Non renseignée / sans déclaration")),"");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=DateInput(optional=True);self.balance=QLineEdit();tf.addRow(tr(tr("Fréquence des déclarations")),self.period);tf.addRow("Date du solde de départ · " + regional.FORMATS[regional.configuration()["format_date"]],self.balance_date);tf.addRow("Solde banque + caisse · " + regional.configuration()["devise"] + "",self.balance);self.layout.addWidget(tva);self.layout.addWidget(button(tr(tr("Enregistrer les réglages")),self.save))
+        f.addRow(tr("Validité des devis · jours"),self.validity);f.addRow(tr("Conditions de vente (facultatif)"),self.terms);f.addRow(tr("Règlement (facultatif)"),self.payment);f.addRow(tr("Mentions complémentaires"),self.note);self.layout.addWidget(docs)
+        tva=QGroupBox(tr("Taxe et trésorerie"));tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem(tr("Non renseignée / sans déclaration"),"");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=DateInput(optional=True);self.balance=QLineEdit();tf.addRow(tr("Fréquence des déclarations"),self.period);tf.addRow(tr("Date du solde de départ · " + regional.FORMATS[regional.configuration()["format_date"]]),self.balance_date);tf.addRow(tr("Solde banque + caisse · " + regional.configuration()["devise"] + ""),self.balance);self.layout.addWidget(tva);self.layout.addWidget(button(tr("Enregistrer les réglages"),self.save))
         actions=QHBoxLayout();actions.addWidget(button(tr("Sauvegarder la base"),lambda:backup_database(self)));actions.addWidget(button(tr("Exporter le journal CSV"),lambda:export_journal_csv(self),secondary=True));actions.addStretch();self.layout.addLayout(actions);self.layout.addStretch()
     def refresh(self):
         e=db.obtenir_entreprise() or {};self.validity.setValue(e.get('validite_devis_jours',30));self.terms.setPlainText(e.get('conditions_vente',''));self.payment.setPlainText(e.get('conditions_reglement',''));self.note.setPlainText(e.get('mention_complementaire',''));self.period.setCurrentIndex(max(0,self.period.findData(e.get('periodicite_tva',''))));self.balance_date.setDate(qdate_from_iso(e['date_solde_depart'])) if e.get('date_solde_depart') else self.balance_date.clear();self.balance.setText(money_text(e.get('solde_depart_centiemes',0)))
@@ -1691,7 +1691,7 @@ def demander_verification(parent):
 class UpdatesPage(Page):
     def __init__(self, parent=None):
         super().__init__("Patenteasy", tr("Mises à jour"), f"Version installée : {VERSION}", parent)
-        texte = "Recherche sécurisée des versions disponibles. L’installation se fait avec votre accord." if est_admin(self) else "Vous serez informé des nouvelles versions. Seul l’administrateur peut les installer."
+        texte = tr("Recherche sécurisée des versions disponibles. L’installation se fait avec votre accord.") if est_admin(self) else tr("Vous serez informé des nouvelles versions. Seul l’administrateur peut les installer.")
         label=QLabel(texte);label.setWordWrap(True);self.layout.addWidget(label)
         self.layout.addWidget(button(tr("Vérifier les mises à jour"), lambda: demander_verification(self)))
         self.layout.addStretch()
@@ -1700,8 +1700,8 @@ class UpdatesPage(Page):
 class HelpPage(Page):
     def __init__(self,parent=None):
         super().__init__("Patenteasy",tr("Aide et contact"),tr("Logiciel libre · GNU GPL v3+ · données conservées localement."),parent)
-        intro=QGroupBox(tr("Premiers pas"));v=QVBoxLayout(intro);text=QLabel("1. Renseignez votre entreprise et sa date de début.\n2. Choisissez votre Taxe et vos préférences.\n3. Ajoutez clients et catalogue.\n4. Créez un devis, vérifiez son PDF, puis émettez-le.\n5. Après acceptation, créez la facture et enregistrez les paiements.");text.setWordWrap(True);v.addWidget(text);self.layout.addWidget(intro)
-        limits=QGroupBox(tr("Points importants"));lv=QVBoxLayout(limits);lbl=QLabel("Taxe : choisissez le calcul souhaité dans Taxe et CA.\nStock : ajoutez vous-même les entrées et sorties.\nTrésorerie : renseignez le solde de départ et toutes les opérations.\nWindows et Android : les versions gratuites ne se synchronisent pas.");lbl.setWordWrap(True);lv.addWidget(lbl);self.layout.addWidget(limits)
+        intro=QGroupBox(tr("Premiers pas"));v=QVBoxLayout(intro);text=QLabel(tr("1. Renseignez votre entreprise, votre devise et vos formats.\n2. Choisissez le calcul des taxes et vos préférences.\n3. Ajoutez clients et catalogue.\n4. Créez un devis et vérifiez son aperçu PDF.\n5. Finalisez le devis ; après acceptation, créez la facture et enregistrez les paiements."));text.setWordWrap(True);v.addWidget(text);self.layout.addWidget(intro)
+        limits=QGroupBox(tr("Points importants"));lv=QVBoxLayout(limits);lbl=QLabel(tr("Taxe : choisissez le calcul souhaité dans Taxe et CA.\nStock : ajoutez vous-même les entrées et sorties.\nTrésorerie : renseignez le solde de départ et toutes les opérations.\nWindows et Android : les versions gratuites ne se synchronisent pas."));lbl.setWordWrap(True);lv.addWidget(lbl);self.layout.addWidget(limits)
         self.layout.addWidget(button(tr("Recevoir les nouveautés de ska_987"), lambda: NewsletterDialog(self).exec(), secondary=True))
         self.layout.addWidget(button(tr("Participer à l’amélioration"), self.participer, secondary=True))
         self.layout.addWidget(button(tr("Signaler un problème"), self.signaler, secondary=True))
@@ -2043,7 +2043,7 @@ class MainWindow(QMainWindow):
         from interface_comptes import ComptesPage, PreferencesPage
         from interface_beta import DemarragePage
         specs=[
-            ("dashboard",tr("Tableau de bord"),DashboardPage),("clients",tr("Clients"),ClientsPage),("articles",tr("Catalogue"),ArticlesPage),("devis",tr("Devis"),QuotesPage),("factures",tr("Factures & avoirs"),InvoicesPage),("journal",tr("Recettes & dépenses"),JournalPage),("stock",tr(tr("Stock")),StockPage),("echeances",tr(tr("Échéances")),RemindersPage),("entreprise",tr(tr("Mon entreprise")),CompanyPage),("reprise",tr(tr("Reprise de données")),RecoveryPage),("fiscalite",tr(tr("Taxe et CA")),FiscalPage),("reglages",tr(tr("Réglages")),SettingsPage),("updates",tr(tr("Mises à jour")),UpdatesPage),("help",tr(tr("Aide & contact")),HelpPage),
+            ("dashboard",tr("Tableau de bord"),DashboardPage),("clients",tr("Clients"),ClientsPage),("articles",tr("Catalogue"),ArticlesPage),("devis",tr("Devis"),QuotesPage),("factures",tr("Factures & avoirs"),InvoicesPage),("journal",tr("Recettes & dépenses"),JournalPage),("stock",tr("Stock"),StockPage),("echeances",tr("Échéances"),RemindersPage),("entreprise",tr("Mon entreprise"),CompanyPage),("reprise",tr("Reprise de données"),RecoveryPage),("fiscalite",tr("Taxe et CA"),FiscalPage),("reglages",tr("Réglages"),SettingsPage),("updates",tr("Mises à jour"),UpdatesPage),("help",tr("Aide & contact"),HelpPage),
         ]
         specs.extend([("preferences", tr("Mes préférences"), PreferencesPage)])
         if est_admin(self):

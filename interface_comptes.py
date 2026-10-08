@@ -16,7 +16,7 @@ class SecretDialog(QDialog):
         self.secret.setEchoMode(QLineEdit.Password);self.confirmation.setEchoMode(QLineEdit.Password)
         f.addRow(tr('Mot de passe actuel') if ancien else tr('Identifiant'),self.identifiant)
         if ancien:self.identifiant.setEchoMode(QLineEdit.Password)
-        f.addRow(tr('Nouveau mot de passe (12 caractères minimum)'),self.secret);f.addRow(tr(tr('Confirmer')),self.confirmation);v.addLayout(f)
+        f.addRow(tr('Nouveau mot de passe (12 caractères minimum)'),self.secret);f.addRow(tr('Confirmer'),self.confirmation);v.addLayout(f)
         b=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel);b.accepted.connect(self.valider);b.rejected.connect(self.reject);v.addWidget(b)
     def valider(self):
         if self.secret.text()!=self.confirmation.text():QMessageBox.warning(self,tr('Mot de passe'),tr('Les mots de passe sont différents.'));return
@@ -26,8 +26,8 @@ class SecretDialog(QDialog):
 class ComptesPage(Page):
     def __init__(self,parent=None):
         super().__init__(tr('Administration'),tr('Comptes'),tr('Créez les accès locaux de votre équipe.'),parent)
-        self.layout.addWidget(button(tr('Créer un utilisateur'),self.creer));self.layout.addWidget(button(tr(tr('Activer / désactiver')),self.basculer,secondary=True))
-        self.table=QTableWidget();configure_table(self.table,[tr('Identifiant'),tr('Rôle'),tr(tr('Accès'))]);self.layout.addWidget(self.table)
+        self.layout.addWidget(button(tr('Créer un utilisateur'),self.creer));self.layout.addWidget(button(tr('Activer / désactiver'),self.basculer,secondary=True))
+        self.table=QTableWidget();configure_table(self.table,[tr('Identifiant'),tr('Rôle'),tr('Accès')]);self.layout.addWidget(self.table)
     def refresh(self):
         if not exiger_admin(self):return
         comptes=self.window().gestion_comptes.lister();fill_table(self.table,[[c['identifiant'],c['role'],tr('Actif') if c['actif'] else tr('Désactivé')] for c in comptes],[c['id'] for c in comptes])
@@ -46,19 +46,19 @@ class ComptesPage(Page):
 
 class PreferencesPage(Page):
     def __init__(self,parent=None):
-        super().__init__(tr('Personnel'),tr('Mes préférences'),tr(tr('Ces réglages concernent votre compte.')),parent)
+        super().__init__(tr('Personnel'),tr('Mes préférences'),tr('Ces réglages concernent votre compte.'),parent)
         self.gestion=parent.gestion_comptes;p=self.gestion.preferences();f=QFormLayout()
         self.theme=QComboBox();self.theme.addItems(['Clair','Sombre','Personnalisé']);self.theme.setCurrentText(p.get('theme','Clair'))
         self.couleur=p.get('accent','#2563eb');self.accent=button(tr('Choisir une couleur'),self.choisir,secondary=True)
         self.delai=QSpinBox();self.delai.setRange(1,120);self.delai.setSuffix(' minutes');self.delai.setValue(p.get('verrouillage',15))
-        f.addRow(tr('Apparence'),self.theme);f.addRow(tr('Couleur d’accent'),self.accent);f.addRow(tr(tr('Verrouiller après inactivité')),self.delai);self.layout.addLayout(f)
+        f.addRow(tr('Apparence'),self.theme);f.addRow(tr('Couleur d’accent'),self.accent);f.addRow(tr('Verrouiller après inactivité'),self.delai);self.layout.addLayout(f)
         self.layout.addWidget(button(tr('Appliquer'),self.appliquer));self.layout.addWidget(button(tr('Changer mon mot de passe'),self.secret,secondary=True))
         self.layout.addWidget(button(tr('Verrouiller / se déconnecter'),parent.verrouiller,secondary=True))
         self.layout.addWidget(button(tr('Sauvegarder maintenant'),self.sauvegarder,secondary=True));self.etat=QLabel();self.etat.setWordWrap(True);self.layout.addWidget(self.etat)
         if est_admin(self):
             self.layout.addWidget(button(tr('Choisir le dossier des sauvegardes'),self.dossier,secondary=True))
             self.jours=QSpinBox();self.jours.setRange(1,90);self.semaines=QSpinBox();self.semaines.setRange(0,52)
-            c=parent.sauvegardes.configuration();self.jours.setValue(c['jours']);self.semaines.setValue(c['semaines']);r=QFormLayout();r.addRow(tr('Jours conservés'),self.jours);r.addRow(tr(tr('Semaines conservées')),self.semaines);self.layout.addLayout(r)
+            c=parent.sauvegardes.configuration();self.jours.setValue(c['jours']);self.semaines.setValue(c['semaines']);r=QFormLayout();r.addRow(tr('Jours conservés'),self.jours);r.addRow(tr('Semaines conservées'),self.semaines);self.layout.addLayout(r)
             self.layout.addWidget(button(tr('Enregistrer la conservation'),self.retenir,secondary=True))
             self.layout.addWidget(button(tr('Restaurer une sauvegarde'),self.restaurer,danger=True))
             self.layout.addWidget(button(tr('Journal des actions'),self.audit,secondary=True))
