@@ -25,7 +25,7 @@ def test_catalogue_signe_et_installateur_modifie_refuse(tmp_path, monkeypatch):
     manifest={'version':VERSION,'taille':exe.stat().st_size,'sha256':hashlib.sha256(exe.read_bytes()).hexdigest()}
     (tmp_path/'version-verifiee.json').write_text(json.dumps(manifest),encoding='utf-8-sig')
     output=publication.preparer(tmp_path)
-    catalogue=json.loads(output.read_text())
+    catalogue=json.loads(output.read_text(encoding="utf-8"))
     assert valider(catalogue, public, 'windows')['version'] == VERSION
     assert valider(catalogue, public, 'android')['version'] == '0.3.7'
     exe.write_bytes(b'MZ-corrompu')

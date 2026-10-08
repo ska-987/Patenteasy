@@ -297,9 +297,29 @@ def button(text: str, slot=None, *, secondary=False, danger=False) -> QPushButto
 class TableInteraction(QObject):
     """Désélection sans laisser de ligne courante utilisable par les actions."""
     def eventFilter(self, obj, event):
-        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress):
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
             return False
         table = self.parent()
+        if event.type() == QEvent.Type.Wheel:
+            if event.modifiers() != Qt.NoModifier:
+                return False
+            delta = event.pixelDelta().y() or event.angleDelta().y()
+            bar = table.verticalScrollBar()
+            at_edge = (delta > 0 and bar.value() == bar.minimum()) or (delta < 0 and bar.value() == bar.maximum())
+            if not at_edge:
+                return False
+            ancestor = table.parentWidget()
+            while ancestor is not None:
+                if isinstance(ancestor, QScrollArea):
+                    outer = ancestor.verticalScrollBar()
+                    movement = event.pixelDelta().y() or round(event.angleDelta().y() / 120 * QApplication.wheelScrollLines() * outer.singleStep())
+                    previous = outer.value()
+                    outer.setValue(previous - movement)
+                    if outer.value() != previous:
+                        event.accept()
+                        return True
+                ancestor = ancestor.parentWidget()
+            return False
         clear = (event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape)
         if obj is table.viewport() and event.type() == QEvent.Type.MouseButtonPress:
             clear = not table.indexAt(event.position().toPoint()).isValid()

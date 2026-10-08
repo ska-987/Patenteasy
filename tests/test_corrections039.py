@@ -112,3 +112,27 @@ def test_date_invalide_vide_et_ancien_siecle(app):
     optional.setDate(ui.qdate_from_iso('2026-10-08'))
     assert optional.entry.text() == '08/10/26'
     optional.clear(); assert ui.iso_date(optional) == ''
+
+
+def test_molette_sur_table_transmet_au_defilement_de_page(app):
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QWheelEvent
+    page=ui.Page('Test', 'Défilement')
+    table=QTableWidget(); ui.configure_table(table, ['Article'])
+    ui.fill_table(table, [['Pompe']], [1]); page.layout.addWidget(table)
+    for i in range(25): page.layout.addWidget(QLabel(str(i)))
+    page.resize(800,400); page.show(); app.processEvents()
+    def wheel(delta):
+        event=QWheelEvent(QPointF(50,50),QPointF(table.viewport().mapToGlobal(QPoint(50,50))),QPoint(),QPoint(0,delta),Qt.NoButton,Qt.NoModifier,Qt.ScrollUpdate,False)
+        app.sendEvent(table.viewport(),event); app.processEvents()
+    outer=page.scroll.verticalScrollBar()
+    wheel(-120)
+    assert outer.value() > 0
+    wheel(120)
+    assert outer.value() == 0
+    # Quand le tableau a encore des lignes à défiler, il garde la molette.
+    ui.fill_table(table, [[str(i)] for i in range(100)], list(range(100)))
+    app.processEvents(); wheel(-120)
+    assert table.verticalScrollBar().value() > 0
+    assert outer.value() == 0
+    page.close()

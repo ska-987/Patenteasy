@@ -53,5 +53,6 @@ Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela e
 
 - Anciens guides 0.3.2 / 0.3.5 devenus obsolètes.
 
+- Molette : le défilement continue dans la page quand le tableau atteint sa limite.
 - Dates : saisie de six chiffres avec séparateurs automatiques JJ/MM/AA et calendrier.
 - Migration Windows : fermeture des connexions avant conversion du coffre.
