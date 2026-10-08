@@ -1,6 +1,6 @@
 # Patenteasy
 
-**Version Windows :** 0.3.8  
+**Version Windows :** 0.3.9  
 **Version Android :** 0.3.7
 
 Application de gestion locale pour indépendants, artisans et petites entreprises.
@@ -13,7 +13,7 @@ Application de gestion locale pour indépendants, artisans et petites entreprise
 
 Patenteasy existe en deux éditions locales indépendantes :
 
-- **Windows 0.3.8** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
+- **Windows 0.3.9** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
 - **Android 0.3.7** : application hors ligne avec stockage local sur le téléphone.
 
 Il n'y a pas de synchronisation automatique entre Windows et Android.
@@ -21,6 +21,20 @@ Il n'y a pas de synchronisation automatique entre Windows et Android.
 ## Fonctions principales
 
 Gestion de l'entreprise, clients, catalogue, devis, factures, paiements, avoirs, journal, sauvegardes et export de données. L'édition Windows propose également des fonctions plus avancées de stock, fiscalité et suivi.
+
+## Installation Windows
+
+Téléchargez l’installeur complet depuis les versions publiées du dépôt. Il contient
+le programme et ses dépendances ; Python n’est pas nécessaire. Installez par-dessus
+la version actuelle pour conserver les comptes et les données.
+
+La version 0.3.9 améliore la sélection et le défilement, simplifie les conditions et
+la fiscalité, et permet de saisir six chiffres pour les dates JJ/MM/AA. Le calendrier
+reste disponible. Le CA reste facultatif et son rappel ne bloque pas les documents.
+
+Les mises à jour sont vérifiées automatiquement à l’ouverture avec un catalogue
+signé. Le dossier de publication et son assistant sont décrits dans
+[distribution/PUBLICATION-0.3.9.txt](distribution/PUBLICATION-0.3.9.txt).
 
 ## Architecture
 

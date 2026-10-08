@@ -8,6 +8,11 @@ Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela e
 
 ## [0.3.9] - 2026-10-08
 
+- Dates : saisie de six chiffres avec séparateurs automatiques JJ/MM/AA et calendrier.
+- Molette : le défilement continue dans la page quand le tableau atteint sa limite.
+- Migration Windows : fermeture des connexions avant conversion du coffre.
+- Assistant de publication intégré : signature officielle sur le PC éditeur, sans Python.
+
 - Sélection lisible en thèmes clair et sombre ; désélection avec Échap.
 - Défilement des formulaires, devis, factures et avoirs.
 - Conditions et mentions repliables et facultatives.
