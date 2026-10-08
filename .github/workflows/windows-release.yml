@@ -192,7 +192,7 @@ jobs:
         run: |
           node --test android/tests/mobile_model.test.cjs
           node android/tests/interface_dom.test.cjs
-          node android/tests/interface.test.cjs
+          timeout 120s node android/tests/interface.test.cjs
           python android/tests/run_tests.py
       - name: Préparer l’APK avec le SDK officiel
         run: |
