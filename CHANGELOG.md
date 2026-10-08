@@ -6,6 +6,13 @@ Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela e
 
 ## [Unreleased]
 
+- Factures : ouverture, aperçu PDF, export direct et encaissement accessibles depuis la liste et le tableau de bord.
+- Référence et désignation séparées dans les devis, factures, avoirs et PDF.
+- Proposition d’un dossier Patenteasy sur le Bureau au premier export ; emplacement mémorisé et bouton d’accès.
+- Actions des factures accessibles sans défiler ; ouverture immédiate après création.
+- Paiements en espèces : la règle XPF locale est limitée au profil PF/XPF.
+- Construction de travail uniquement ; aucune nouvelle release ni mise à jour du catalogue publiée.
+
 ## [0.4.0] - 2026-10-08
 
 - Profil général pour tous métiers : pays facultatif, devise, précision, taxe et identifiants personnalisables.

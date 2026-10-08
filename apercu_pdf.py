@@ -17,8 +17,13 @@ def ouvrir(parent, contenu, nom):
         view=QPdfView(dialog);view.setDocument(document);view.setPageMode(QPdfView.PageMode.MultiPage);view.setZoomMode(QPdfView.ZoomMode.FitToWidth);layout.addWidget(view)
         actions=QHBoxLayout();save=QPushButton(tr('Enregistrer le PDF'));close=QPushButton(tr('Fermer'));actions.addWidget(save);actions.addStretch();actions.addWidget(close);layout.addLayout(actions)
         def enregistrer():
-            destination,_=QFileDialog.getSaveFileName(dialog,tr('Enregistrer le PDF'),nom,'PDF (*.pdf)')
-            if destination:Path(destination).write_bytes(contenu)
+            from exports_pdf import enregistrer as exporter
+            from qt_app import show_error, show_info
+            try:
+                destination = exporter(dialog, contenu, nom)
+                if destination: show_info(dialog, f"PDF enregistré :\n{destination}")
+            except Exception as exc:
+                show_error(dialog, exc)
         save.clicked.connect(enregistrer);close.clicked.connect(dialog.accept)
         try:dialog.exec()
         finally:document.close();dialog.deleteLater()

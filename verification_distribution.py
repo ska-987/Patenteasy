@@ -20,7 +20,7 @@ def verifier(rapport):
             import database as db
             import gestion as g
             from pdf_documents import generer
-            from qt_app import FiscalPage, SettingsPage, QuoteEditorDialog
+            from qt_app import FiscalPage, SettingsPage, QuoteEditorDialog, InvoiceDialog
             from version import VERSION
             app = QApplication.instance() or QApplication([])
             protection = Coffre(db.DB_PATH)
@@ -49,8 +49,28 @@ def verifier(rapport):
             view.setDocument(None); view.close(); view.deleteLater(); lecture.close(); lecture.deleteLater()
             g.emettre_devis(devis)
             assert db.obtenir_devis(devis)['statut'] == 'envoye'
+            g.decision_devis(devis, "accepte")
+            facture = g.creer_facture(devis, jour, jour)
+            facture_ui = InvoiceDialog(facture)
+            assert callable(facture_ui.preview_pdf) and callable(facture_ui.export_pdf)
+            import exports_pdf
+            from PySide6.QtCore import QSettings, QStandardPaths
+            from PySide6.QtWidgets import QMessageBox, QFileDialog, QDialog
+            reglages = QSettings(str(Path(dossier)/'exports.ini'), QSettings.IniFormat)
+            originales = (exports_pdf.preferences, QStandardPaths.writableLocation, QMessageBox.exec, QFileDialog.exec)
+            try:
+                exports_pdf.preferences = lambda: reglages
+                QStandardPaths.writableLocation = lambda _: str(Path(dossier)/'bureau')
+                QMessageBox.exec = lambda _: QMessageBox.StandardButton.Yes
+                QFileDialog.exec = lambda _: QDialog.DialogCode.Accepted
+                exporte = exports_pdf.enregistrer(facture_ui, generer(g.document(facture)['contenu']), 'facture.pdf')
+                assert exporte.parent == Path(dossier)/'bureau'/'Patenteasy'
+                assert exporte.read_bytes().startswith(b'%PDF')
+                assert exports_pdf.choisir_dossier(facture_ui) == exporte.parent
+            finally:
+                exports_pdf.preferences, QStandardPaths.writableLocation, QMessageBox.exec, QFileDialog.exec = originales
             autre = g.dupliquer_devis(devis)
-            ecrans = [FiscalPage(), SettingsPage(), QuoteEditorDialog(autre)]
+            ecrans = [FiscalPage(), SettingsPage(), QuoteEditorDialog(autre), facture_ui]
             for ecran in ecrans:
                 ecran.resize(900, 500); ecran.show(); app.processEvents(); ecran.close(); ecran.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -88,7 +108,8 @@ def verifier(rapport):
             coffre.ACTIF = None
             resultat = {'ok': True, 'version': VERSION, 'qt': True, 'chiffrement': True,
                         'pdf': True, 'apercu_pdf': True, 'taxe': True, 'documents': True,
-                        'profil_general': True, 'sauvegarde_nouveau_pc': True}
+                        'profil_general': True, 'sauvegarde_nouveau_pc': True, 'ouverture_facture': True,
+                        'exports_pdf_bureau': True}
     except Exception:
         resultat['erreur'] = traceback.format_exc()
     Path(rapport).write_text(json.dumps(resultat, ensure_ascii=False, indent=2), encoding='utf-8')

@@ -308,7 +308,8 @@ class GestionDocuments:
         m = self.base.convertir_montant(montant)
         if mode not in ('virement', 'carte', 'especes', 'cheque', 'autre') or m <= 0:
             raise ValueError('Montant ou moyen de paiement invalide.')
-        if mode == 'especes' and m % 500:
+        cfg = regional.configuration(self.base.obtenir_entreprise())
+        if mode == 'especes' and cfg['pays'] == 'PF' and cfg['devise'] == 'XPF' and m % (5 * 10 ** cfg['decimales']):
             raise ValueError('En espèces, saisissez le montant effectivement encaissé, multiple de 5 F CFP. Utilisez un ajustement documenté si nécessaire.')
         with self.connexion() as c:
             d = self.document(identifiant)
@@ -377,7 +378,8 @@ class GestionDocuments:
         m = self.base.convertir_montant(montant)
         if m <= 0 or mode not in ('virement', 'carte', 'especes', 'cheque', 'autre'):
             raise ValueError('Montant ou moyen de remboursement invalide.')
-        if mode == 'especes' and m % 500:
+        cfg = regional.configuration(self.base.obtenir_entreprise())
+        if mode == 'especes' and cfg['pays'] == 'PF' and cfg['devise'] == 'XPF' and m % (5 * 10 ** cfg['decimales']):
             raise ValueError('Le montant en espèces doit être un multiple de 5 F CFP.')
         with self.connexion() as c:
             d = self.document(identifiant)

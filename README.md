@@ -50,6 +50,18 @@ Les mises à jour sont vérifiées automatiquement à l’ouverture avec un cata
 signé. Le dossier de publication et son assistant sont décrits dans
 [distribution/PUBLICATION-0.4.0.txt](distribution/PUBLICATION-0.4.0.txt).
 
+## Travail en cours, sans nouvelle release
+
+La branche `work/factures-pdf` produit un installeur de test. Elle ne crée aucune
+release, aucun tag et ne publie aucun catalogue de mise à jour. La version interne
+reste inchangée jusqu’à validation de la beta.
+
+Les factures s’ouvrent depuis leur liste et le tableau de bord pour l’aperçu PDF,
+l’export et l’encaissement. Les références et désignations utilisent des colonnes
+séparées, y compris dans le PDF. Au premier export, l’utilisateur peut créer
+`Patenteasy` sur son Bureau ou choisir un autre dossier. L’emplacement est mémorisé
+pour les prochains exports ; le bouton « Ouvrir le dossier PDF » donne un accès direct.
+
 ## Architecture
 
 - `database.py` : données locales et accès SQLite ;

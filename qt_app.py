@@ -420,10 +420,19 @@ def confirm(parent, text: str) -> bool:
 
 
 def save_pdf(parent, contents: bytes, suggested: str):
-    path, _ = QFileDialog.getSaveFileName(parent, tr("Enregistrer le PDF"), suggested, "Document PDF (*.pdf)")
+    from exports_pdf import enregistrer
+    path = enregistrer(parent, contents, suggested)
     if path:
-        Path(path).write_bytes(contents)
         show_info(parent, f"PDF enregistré :\n{path}")
+    return path
+
+
+def open_pdf_folder(parent):
+    try:
+        from exports_pdf import ouvrir_dossier
+        ouvrir_dossier(parent)
+    except Exception as exc:
+        show_error(parent, exc)
 
 
 def backup_database(parent):
@@ -1070,7 +1079,7 @@ class QuoteEditorDialog(QDialog):
         linebar.addStretch()
         root.addLayout(linebar)
         self.lines = QTableWidget()
-        configure_table(self.lines, [tr("Désignation"), tr("Quantité"), tr("Prix HT"), tr("Taxe %"), tr("Total HT"), tr("Réf.")])
+        configure_table(self.lines, [tr("Référence"), tr("Désignation"), tr("Quantité"), tr("Prix HT"), tr("Taxe %"), tr("Total HT")])
         self.lines.doubleClicked.connect(self.edit_line)
         root.addWidget(self.lines, 1)
         self.total = QLabel(); self.total.setWordWrap(True); self.total.setProperty("class", "metricValue"); self.total.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -1078,13 +1087,14 @@ class QuoteEditorDialog(QDialog):
         actions = QGridLayout()
         self.save_btn = button(tr("Enregistrer le brouillon"), self.save_header)
         self.pdf_btn = button(tr("Aperçu PDF"), self.preview_pdf, secondary=True)
+        self.export_btn = button(tr("Exporter le PDF"), self.export_pdf, secondary=True)
         self.emit_btn = button(tr("Finaliser le devis"), self.emit_quote)
         self.accept_btn = button(tr("Marquer accepté"), lambda: self.decision("accepte"))
         self.refuse_btn = button(tr("Marquer refusé"), lambda: self.decision("refuse"), danger=True)
         self.invoice_btn = button(tr("Créer la facture"), self.create_invoice)
         self.duplicate_btn = button(tr("Dupliquer"), self.duplicate, secondary=True)
         close = button(tr("Fermer"), self.accept, secondary=True)
-        for i, b in enumerate([self.save_btn, self.pdf_btn, self.emit_btn, self.accept_btn, self.refuse_btn, self.invoice_btn, self.duplicate_btn]):
+        for i, b in enumerate([self.save_btn, self.pdf_btn, self.export_btn, self.emit_btn, self.accept_btn, self.refuse_btn, self.invoice_btn, self.duplicate_btn]):
             actions.addWidget(b, i // 4, i % 4)
         outer.addWidget(close)
         root.addLayout(actions)
@@ -1136,7 +1146,7 @@ class QuoteEditorDialog(QDialog):
                 self.save_state.setText(tr("Brouillon enregistré · vérifiez les champs incomplets."))
             else:self.save_state.setText(tr("Brouillon enregistré automatiquement.") if d['statut']=='brouillon' else tr("Document finalisé."))
         lines = s["lignes"]
-        fill_table(self.lines, [[x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["prix_unitaire_centiemes"]), decimal_text(x["taxe_centiemes"]), fcfp(x["ht"]), x["reference"]] for x in lines], [x["id"] for x in lines])
+        fill_table(self.lines, [[x.get("reference", ""), x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["prix_unitaire_centiemes"]), decimal_text(x["taxe_centiemes"]), fcfp(x["ht"])] for x in lines], [x["id"] for x in lines])
         regime = s.get("regime")
         total = tr("Total HT : ")+fcfp(s["ht"])
         if regime:
@@ -1269,8 +1279,9 @@ class QuoteEditorDialog(QDialog):
         if d.exec():
             try:
                 fid = g.creer_facture(self.quote_id, iso_date(invoice_date), iso_date(due))
-                show_info(self, f"Facture créée (document #{fid}).")
                 self.changed.emit(); self.refresh()
+                InvoiceDialog(fid, self).exec()
+                self.changed.emit()
             except Exception as exc: show_error(self, exc)
 
 
@@ -1280,6 +1291,7 @@ class QuotesPage(Page):
         bar = QHBoxLayout()
         bar.addWidget(button(tr("Créer un devis"), self.add))
         bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True))
+        bar.addWidget(button(tr("Ouvrir le dossier PDF"), lambda: open_pdf_folder(self), secondary=True))
         bar.addStretch(); self.layout.addLayout(bar)
         self.recherche=QLineEdit();self.recherche.setPlaceholderText(tr("Rechercher par nom ou numéro"));self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
         self.table = QTableWidget(); configure_table(self.table, [tr("N°"), tr("Date"), tr("Client"), tr("Objet"), tr("État")])
@@ -1328,18 +1340,20 @@ class InvoiceDialog(QDialog):
         root.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         self.scroll.setWidget(body)
         outer.addWidget(self.scroll)
-        self.heading = QLabel(); self.heading.setObjectName("title"); root.addWidget(self.heading)
-        self.metrics = QLabel(); self.metrics.setObjectName("lead"); root.addWidget(self.metrics)
-        self.lines = QTableWidget(); configure_table(self.lines, [tr("Désignation"), tr("Quantité"), tr("Total HT")]); root.addWidget(self.lines, 1)
+        self.heading = QLabel(); self.heading.setObjectName("title"); self.heading.setWordWrap(True); root.addWidget(self.heading)
+        self.metrics = QLabel(); self.metrics.setObjectName("lead"); self.metrics.setWordWrap(True); root.addWidget(self.metrics)
+        self.lines = QTableWidget(); configure_table(self.lines, [tr("Référence"), tr("Désignation"), tr("Quantité"), tr("Prix HT"), tr("Total HT")]); root.addWidget(self.lines, 1)
         self.payments = QTableWidget(); configure_table(self.payments, [tr("Date"), tr("Montant"), tr("Moyen"), tr("Référence")])
         box = QGroupBox(tr("Paiements enregistrés")); boxl = QVBoxLayout(box); boxl.addWidget(self.payments); root.addWidget(box)
-        bar = QHBoxLayout()
+        bar = QGridLayout()
         self.pdf_btn = button(tr("Aperçu PDF"), self.preview_pdf, secondary=True)
+        self.export_btn = button(tr("Exporter le PDF"), self.export_pdf, secondary=True)
         self.pay_btn = button(tr("Enregistrer un paiement"), self.pay)
         self.credit_btn = button(tr("Émettre un avoir"), self.credit, danger=True)
         self.refund_btn = button(tr("Enregistrer un remboursement"), self.refund, secondary=True)
-        for b in [self.pdf_btn, self.pay_btn, self.credit_btn, self.refund_btn]: bar.addWidget(b)
-        bar.addStretch(); bar.addWidget(button(tr("Fermer"), self.accept, secondary=True)); root.addLayout(bar)
+        for i, b in enumerate([self.pdf_btn, self.export_btn, self.pay_btn, self.credit_btn, self.refund_btn]):
+            bar.addWidget(b, i // 3, i % 3)
+        bar.addWidget(button(tr("Fermer"), self.accept, secondary=True), 1, 2); outer.addLayout(bar)
         self.refresh()
 
     def refresh(self):
@@ -1347,7 +1361,7 @@ class InvoiceDialog(QDialog):
         c = d["contenu"]
         self.heading.setText(f'{d["numero"]} · {c["client"]["nom"]}')
         self.metrics.setText(f'Total {fcfp(d["total_centiemes"])} · Réglé {fcfp(d["paye"])} · Avoirs {fcfp(d["credite"])}' + (f' · Reste {fcfp(d["reste"])}' if d["type"] == "facture" else ""))
-        fill_table(self.lines, [[x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["ht"])] for x in c["lignes"]])
+        fill_table(self.lines, [[x.get("reference", ""), x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["prix_unitaire_centiemes"]), fcfp(x["ht"])] for x in c["lignes"]])
         fill_table(self.payments, [[x["date_paiement"], fcfp(x["montant_centiemes"]), x["mode"], x["reference"]] for x in d["paiements"]])
         self.pay_btn.setVisible(d["type"] == "facture" and d["reste"] > 0)
         self.credit_btn.setVisible(d["type"] == "facture" and d["credite"] < d["total_centiemes"])
@@ -1355,6 +1369,14 @@ class InvoiceDialog(QDialog):
         if not est_admin(self):
             self.credit_btn.hide(); self.refund_btn.hide()
         self.changed.emit()
+
+    def preview_pdf(self):
+        try:
+            from apercu_pdf import ouvrir
+            d = g.document(self.document_id)
+            ouvrir(self, generer(d["contenu"]), d["numero"] + ".pdf")
+        except Exception as exc:
+            show_error(self, exc)
 
     def export_pdf(self):
         try:
@@ -1395,7 +1417,8 @@ class InvoicesPage(Page):
         self.recherche = QLineEdit()
         self.recherche.setPlaceholderText(tr("Numéro exact de facture"))
         self.recherche.returnPressed.connect(self.refresh)
-        bar = QHBoxLayout(); bar.addWidget(self.recherche); bar.addWidget(button(tr("Rechercher"), self.refresh)); bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True))
+        self.recherche.textChanged.connect(lambda _texte: self.refresh())
+        bar = QHBoxLayout(); bar.addWidget(self.recherche); bar.addWidget(button(tr("Rechercher"), self.refresh)); bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True)); bar.addWidget(button(tr("Ouvrir le dossier PDF"), lambda: open_pdf_folder(self), secondary=True))
         self.layout.addLayout(bar)
         self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr("Date"), tr("Client"), tr("Total"), tr("Réglé"), tr("Reste")])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)

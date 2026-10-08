@@ -60,10 +60,10 @@ def generer(s, brouillon=False):
     if s.get('origine_numero'): elements.append(p(P('Facture corrigée : ')+s['origine_numero']+' — '+s['motif']))
     if s['devis']['objet']: elements.append(p(s['devis']['objet'],'Heading2'))
     elements.append(Spacer(1,6*mm))
-    rows=[[p(v,'Petit') for v in [P('Désignation'),P('Qté / unité'),P('PU HT'),taxe+' %',P('Total HT')]]]
+    rows=[[p(v,'Petit') for v in [P('Référence'),P('Désignation'),P('Qté / unité'),P('PU HT'),taxe+' %',P('Total HT')]]]
     for l in s['lignes']:
-        rows.append([p((l['reference']+' — ' if l['reference'] else '')+l['designation'],'Petit'),p(monnaie(l['quantite_centiemes'])+' '+l['unite'],'Petit'),p(M(l['prix_unitaire_centiemes']),'Petit'),p(monnaie(l['taxe_centiemes']) if s['regime']=='reel' else '—','Petit'),p(M(l['ht']),'Petit')])
-    table=Table(rows,colWidths=[78*mm,28*mm,25*mm,19*mm,28*mm],repeatRows=1)
+        rows.append([p(l.get('reference', ''),'Petit'),p(l['designation'],'Petit'),p(monnaie(l['quantite_centiemes'])+' '+l['unite'],'Petit'),p(M(l['prix_unitaire_centiemes']),'Petit'),p(monnaie(l['taxe_centiemes']) if s['regime']=='reel' else '—','Petit'),p(M(l['ht']),'Petit')])
+    table=Table(rows,colWidths=[25*mm,55*mm,25*mm,26*mm,19*mm,28*mm],repeatRows=1)
     table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e8edf4')),('VALIGN',(0,0),(-1,-1),'TOP'),('LINEBELOW',(0,0),(-1,-1),.4,colors.HexColor('#cbd4df')),('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7)]))
     elements += [table,Spacer(1,6*mm),p(P('Total HT : ')+M(s['ht'])+' '+cfg['devise'],'Heading3')]
     if s['regime']=='reel':
