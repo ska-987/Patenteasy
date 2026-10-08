@@ -80,6 +80,7 @@ def test_migration_preserve_ancien_compte_et_donnees(tmp_path):
         c.execute('CREATE TABLE comptes (id INTEGER,identifiant TEXT,role TEXT,sel BLOB,empreinte BLOB,iterations INTEGER,actif INTEGER,echecs INTEGER,bloque_jusqua REAL)')
         c.execute('INSERT INTO comptes VALUES (1,?,?,?,?,?,1,0,0)',('ancien','admin',sel,empreinte,600000))
         c.execute('CREATE TABLE secret (contenu TEXT)');c.execute("INSERT INTO secret VALUES ('ancien client')")
+    c.close()
     comptes=GestionComptes(BaseDonnees(p));assert not comptes.premier_compte_requis();assert comptes.authentifier('ancien',secret)
     assert b'ancien client' not in p.read_bytes()
     c=comptes.coffre.ouvrir();assert c.execute('SELECT contenu FROM secret').fetchone()[0]=='ancien client';c.close();comptes.coffre.verrouiller()

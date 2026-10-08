@@ -85,3 +85,30 @@ def test_pages_et_formulaires_defilent(app, base):
     assert quote.terms_panel.isVisible()
     assert quote.scroll.verticalScrollBar().maximum() > 0
     for widget in (settings,form,quote):widget.close()
+
+
+@pytest.mark.parametrize('typed,display,iso', [
+    ('081026', '08/10/26', '2026-10-08'),
+    ('311226', '31/12/26', '2026-12-31'),
+    ('290228', '29/02/28', '2028-02-29'),
+])
+def test_dates_six_chiffres(app, typed, display, iso):
+    date=ui.make_date('2026-01-01')
+    date.entry.selectAll()
+    QTest.keyClicks(date.entry, typed)
+    assert date.entry.text() == display
+    assert ui.iso_date(date) == iso
+
+
+def test_date_invalide_vide_et_ancien_siecle(app):
+    date=ui.make_date('1999-12-31')
+    assert ui.iso_date(date) == '1999-12-31'
+    date.entry.selectAll(); QTest.keyClicks(date.entry, '290227')
+    with pytest.raises(ValueError, match='n’existe pas'): ui.iso_date(date)
+    date.entry.selectAll(); QTest.keyClicks(date.entry, '0801')
+    with pytest.raises(ValueError, match='Complétez'): ui.iso_date(date)
+    optional=ui.DateInput(optional=True)
+    assert ui.iso_date(optional) == ''
+    optional.setDate(ui.qdate_from_iso('2026-10-08'))
+    assert optional.entry.text() == '08/10/26'
+    optional.clear(); assert ui.iso_date(optional) == ''

@@ -75,6 +75,10 @@ def lancer_assistant_mise_a_jour() -> int:
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--prepare-publication":
+        from publication_release import lancer
+        return lancer(sys.argv[2])
+
     if len(sys.argv) == 3 and sys.argv[1] == "--self-test":
         from verification_distribution import verifier
         return verifier(sys.argv[2])

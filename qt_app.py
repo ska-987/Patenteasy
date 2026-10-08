@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QDateEdit,
+    QCalendarWidget,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -211,14 +211,75 @@ def qdate_from_iso(value: str | None, fallback_today: bool = True) -> QDate:
     return QDate.currentDate() if fallback_today else QDate(2000, 1, 1)
 
 
-def make_date(value: str | None = None) -> QDateEdit:
-    widget = QDateEdit(qdate_from_iso(value))
-    widget.setCalendarPopup(True)
-    widget.setDisplayFormat("dd/MM/yyyy")
-    return widget
+class DateInput(QWidget):
+    """Six chiffres, séparateurs automatiques et calendrier facultatif."""
+    def __init__(self, value=None, *, optional=False):
+        super().__init__()
+        self.optional = optional
+        self._original = QDate()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.entry = QLineEdit()
+        self.entry.setInputMask("00/00/00;_")
+        self.entry.setToolTip("JJ/MM/AA · tapez les six chiffres, par exemple 081026")
+        self.setFocusProxy(self.entry)
+        self.calendar_button = QPushButton("Calendrier")
+        self.calendar_button.setToolTip("Choisir une date dans le calendrier")
+        self.calendar_button.clicked.connect(self.open_calendar)
+        layout.addWidget(self.entry, 1)
+        layout.addWidget(self.calendar_button)
+        if value or not optional:
+            self.setDate(qdate_from_iso(value))
+
+    def setDate(self, value):
+        if not value.isValid():
+            raise ValueError("Date invalide.")
+        self._original = value
+        self.entry.setText(value.toString("dd/MM/yy"))
+
+    def clear(self):
+        self._original = QDate()
+        self.entry.clear()
+
+    def date(self):
+        digits = ''.join(c for c in self.entry.text() if c.isdigit())
+        if not digits and self.optional:
+            return QDate()
+        if len(digits) != 6:
+            raise ValueError("Complétez la date au format JJ/MM/AA.")
+        if self._original.isValid() and self.entry.text() == self._original.toString("dd/MM/yy"):
+            return self._original
+        result = QDate(2000 + int(digits[4:]), int(digits[2:4]), int(digits[:2]))
+        if not result.isValid():
+            raise ValueError("Cette date n’existe pas. Utilisez le format JJ/MM/AA.")
+        return result
+
+    def open_calendar(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Choisir une date")
+        layout = QVBoxLayout(dialog)
+        calendar = QCalendarWidget()
+        calendar.setGridVisible(True)
+        try:
+            selected = self.date()
+        except ValueError:
+            selected = QDate.currentDate()
+        calendar.setSelectedDate(selected if selected.isValid() else QDate.currentDate())
+        layout.addWidget(calendar)
+        controls = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        controls.accepted.connect(dialog.accept)
+        controls.rejected.connect(dialog.reject)
+        calendar.activated.connect(lambda _: dialog.accept())
+        layout.addWidget(controls)
+        if dialog.exec() == QDialog.Accepted:
+            self.setDate(calendar.selectedDate())
 
 
-def iso_date(widget: QDateEdit) -> str:
+def make_date(value: str | None = None) -> DateInput:
+    return DateInput(value)
+
+
+def iso_date(widget: DateInput) -> str:
     return widget.date().toString(Qt.DateFormat.ISODate)
 
 
@@ -1461,12 +1522,12 @@ class SettingsPage(Page):
         for field in (self.terms,self.payment,self.note):
             field.setFixedHeight(90);field.setPlaceholderText("Facultatif — texte à afficher sur les documents")
         f.addRow("Validité des devis · jours",self.validity);f.addRow("Conditions de vente (facultatif)",self.terms);f.addRow("Règlement (facultatif)",self.payment);f.addRow("Mentions complémentaires",self.note);self.layout.addWidget(docs)
-        tva=QGroupBox("TVA et trésorerie");tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem("Non renseignée / sans déclaration","");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=QLineEdit();self.balance=QLineEdit();tf.addRow("Fréquence des déclarations",self.period);tf.addRow("Date du solde de départ (AAAA-MM-JJ)",self.balance_date);tf.addRow("Solde banque + caisse · F CFP",self.balance);self.layout.addWidget(tva);self.layout.addWidget(button("Enregistrer les réglages",self.save))
+        tva=QGroupBox("TVA et trésorerie");tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem("Non renseignée / sans déclaration","");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=DateInput(optional=True);self.balance=QLineEdit();tf.addRow("Fréquence des déclarations",self.period);tf.addRow("Date du solde de départ · JJ/MM/AA",self.balance_date);tf.addRow("Solde banque + caisse · F CFP",self.balance);self.layout.addWidget(tva);self.layout.addWidget(button("Enregistrer les réglages",self.save))
         actions=QHBoxLayout();actions.addWidget(button("Sauvegarder la base",lambda:backup_database(self)));actions.addWidget(button("Exporter le journal CSV",lambda:export_journal_csv(self),secondary=True));actions.addStretch();self.layout.addLayout(actions);self.layout.addStretch()
     def refresh(self):
-        e=db.obtenir_entreprise() or {};self.validity.setValue(e.get('validite_devis_jours',30));self.terms.setPlainText(e.get('conditions_vente',''));self.payment.setPlainText(e.get('conditions_reglement',''));self.note.setPlainText(e.get('mention_complementaire',''));self.period.setCurrentIndex(max(0,self.period.findData(e.get('periodicite_tva',''))));self.balance_date.setText(e.get('date_solde_depart',''));self.balance.setText(decimal_text(e.get('solde_depart_centiemes',0)))
+        e=db.obtenir_entreprise() or {};self.validity.setValue(e.get('validite_devis_jours',30));self.terms.setPlainText(e.get('conditions_vente',''));self.payment.setPlainText(e.get('conditions_reglement',''));self.note.setPlainText(e.get('mention_complementaire',''));self.period.setCurrentIndex(max(0,self.period.findData(e.get('periodicite_tva',''))));self.balance_date.setDate(qdate_from_iso(e['date_solde_depart'])) if e.get('date_solde_depart') else self.balance_date.clear();self.balance.setText(decimal_text(e.get('solde_depart_centiemes',0)))
     def save(self):
-        try:g.regler_entreprise(self.validity.value(),self.terms.toPlainText(),self.payment.toPlainText(),self.note.toPlainText(),self.period.currentData(),self.balance.text(),self.balance_date.text());self.refresh();show_info(self,"Réglages enregistrés.")
+        try:g.regler_entreprise(self.validity.value(),self.terms.toPlainText(),self.payment.toPlainText(),self.note.toPlainText(),self.period.currentData(),self.balance.text(),iso_date(self.balance_date));self.refresh();show_info(self,"Réglages enregistrés.")
         except Exception as exc:show_error(self,exc)
 
 def demander_verification(parent):

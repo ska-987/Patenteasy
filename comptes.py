@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import secrets
 import sqlite3
+from contextlib import closing
 import time
 from database import BaseDonnees
 from coffre import Coffre, envelopper, desenvelopper, ecrire_json
@@ -23,7 +24,7 @@ class GestionComptes:
     def _anciens(self):
         if not self.base.chemin.exists(): return []
         try:
-            with sqlite3.connect(self.base.chemin.resolve().as_uri()+'?mode=ro', uri=True) as c:
+            with closing(sqlite3.connect(self.base.chemin.resolve().as_uri()+'?mode=ro', uri=True)) as c:
                 c.row_factory=sqlite3.Row
                 return [dict(x) for x in c.execute('SELECT * FROM comptes')]
         except sqlite3.DatabaseError: return []
