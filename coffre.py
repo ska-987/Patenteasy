@@ -42,9 +42,8 @@ class Coffre:
         self.code_recuperation = None
 
     def lire(self):
-        reprise=self.chemin.parent/'restauration-acces.json'
-        if reprise.exists() and not (self.chemin.parent/'restauration.db').exists():
-            os.replace(reprise,self.metadata)
+        from sauvegarde_portable import reprendre
+        reprendre(self)
         return json.loads(self.metadata.read_text(encoding='utf-8'))
 
     def ouvrir(self, chemin=None):

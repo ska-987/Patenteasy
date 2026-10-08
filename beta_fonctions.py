@@ -7,14 +7,17 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlencode
+import regional
 import database as db
 import gestion as g
 
-NOUVEAUTES = ('Sélection lisible et désélection avec Échap.',
+ANCIENNES_NOUVEAUTES = ('Sélection lisible et désélection avec Échap.',
               'Formulaires et documents défilants.',
               'Conditions et mentions des devis repliables et facultatives.',
               'Choix de TVA sans dates ni attestation ; CA facultatif.',
               'Rappel de dépassement de 10 millions sans blocage.')
+
+NOUVEAUTES = ('Pays, devise, précision et formats configurables.', 'Brouillons enregistrés automatiquement, même avec une date à compléter.', 'Aperçu PDF avant l’enregistrement du fichier.', 'Sauvegardes portables récupérables sur un nouveau PC.', 'Rappels fiscaux locaux informatifs.')
 
 def cellule_csv(valeur):
     s=str(valeur if valeur is not None else '')
@@ -40,11 +43,11 @@ class ServicesBeta:
             client=db.obtenir_client(devis['client_id']) if devis else None
             email=(client or {}).get('email','').strip()
         if email and (any(c in email for c in '\r\n<>') or email.count('@')!=1):email=''
-        montant=f"{Decimal(d['reste'])/100:,.2f}".replace(',',' ').replace('.',',')
-        corps=f"Bonjour {s['client']['nom']},\n\nSauf erreur de notre part, il reste {montant} F CFP à régler pour la facture {d['numero']}, avec une échéance le {d['echeance']}.\n\nSi votre règlement a déjà été effectué, merci de nous en informer.\n\nMerci,\n{s['entreprise']['nom']}"
+        montant=regional.montant(d['reste'],s['entreprise'])
+        corps=f"Bonjour {s['client']['nom']},\n\nSauf erreur de notre part, il reste {montant} à régler pour la facture {d['numero']}, avec une échéance le {d['echeance']}.\n\nSi votre règlement a déjà été effectué, merci de nous en informer.\n\nMerci,\n{s['entreprise']['nom']}"
         return email,corps,'mailto:'+email+'?'+urlencode({'subject':'Rappel — facture '+d['numero'],'body':corps})
     def exporter_csv(self,annee,destination):
         self.comptes.exiger_admin();lignes=db.lister_operations(annee)
-        flux=io.StringIO(newline='');w=csv.writer(flux,delimiter=';');w.writerow(['Date','Libellé','Type','Montant F CFP'])
-        for r in lignes:w.writerow([r['date_operation'],cellule_csv(r['libelle']),r['type_operation'],format(Decimal(r['montant_centiemes'])/100,'.2f').replace('.',',')])
+        flux=io.StringIO(newline='');w=csv.writer(flux,delimiter=';');w.writerow(['Date','Libellé','Type','Montant '+regional.configuration()['devise']])
+        for r in lignes:w.writerow([r['date_operation'],cellule_csv(r['libelle']),r['type_operation'],regional.montant(r['montant_centiemes'],unite=False,saisie=True)])
         p=Path(destination);p.write_text(flux.getvalue(),encoding='utf-8-sig',newline='');self.comptes.tracer('Export CSV',str(annee));return p

@@ -24,8 +24,9 @@ def verifier(rapport):
             from version import VERSION
             app = QApplication.instance() or QApplication([])
             protection = Coffre(db.DB_PATH)
-            protection.creer('verification', 'VerificationLocale-039!')
+            protection.creer('verification', 'VerificationLocale-040!')
             g.migrer()
+            g.regler_region('US', 'USD', 2, 'MM/dd/yy', 'en', 'Sales tax', '', 'Business ID')
             db.modifier_entreprise('Atelier test', '', '', '', 'Moorea', 'TEST', '')
             client = db.ajouter_client('Client test')
             jour = g.aujourd_hui().isoformat()
@@ -34,7 +35,18 @@ def verifier(rapport):
             g.confirmer_fiscalite(int(jour[:4]), 'reel', ca='12000000')
             contenu = g.calculer(devis)
             assert contenu['tva'] == 16000
-            assert generer(contenu).startswith(b'%PDF')
+            pdf = generer(contenu)
+            assert pdf.startswith(b'%PDF')
+            from PySide6.QtPdf import QPdfDocument
+            from PySide6.QtPdfWidgets import QPdfView
+            from PySide6.QtCore import QSize
+            fichier = Path(dossier)/'verification.pdf'; fichier.write_bytes(pdf)
+            lecture = QPdfDocument()
+            assert lecture.load(str(fichier)) == QPdfDocument.Error.None_
+            assert lecture.pageCount() > 0
+            assert not lecture.render(0, QSize(300,400)).isNull()
+            view = QPdfView(); view.setDocument(lecture); view.show(); app.processEvents()
+            view.setDocument(None); view.close(); view.deleteLater(); lecture.close(); lecture.deleteLater()
             g.emettre_devis(devis)
             assert db.obtenir_devis(devis)['statut'] == 'envoye'
             autre = g.dupliquer_devis(devis)
@@ -45,10 +57,26 @@ def verifier(rapport):
             ecrans.clear()
             app.processEvents()
             assert not db.DB_PATH.read_bytes().startswith(b'SQLite format 3')
+            from comptes import GestionComptes
+            from sauvegardes import GestionSauvegardes
+            from sauvegarde_portable import preparer, verifier
+            comptes = GestionComptes(db.BaseDonnees(db.DB_PATH))
+            comptes.coffre = protection; comptes.session = protection.compte
+            copies = GestionSauvegardes(comptes); copies.configurer(Path(dossier)/'copies')
+            sauvegarde = copies.creer()
+            preparation = preparer(sauvegarde, 'VerificationLocale-040!')
+            assert verifier(preparation, Path(dossier)/'verification')['devis'] == 2
             protection.verrouiller()
             coffre.ACTIF = None
+            nouveau = GestionComptes(db.BaseDonnees(Path(dossier)/'nouveau-pc'/'base.db'))
+            nouveau.restaurer_nouveau_pc(preparation)
+            c = nouveau.coffre.ouvrir()
+            assert c.execute('SELECT count(*) FROM devis').fetchone()[0] == 2
+            c.close(); nouveau.coffre.verrouiller()
+            coffre.ACTIF = None
             resultat = {'ok': True, 'version': VERSION, 'qt': True, 'chiffrement': True,
-                        'pdf': True, 'tva': True, 'documents': True}
+                        'pdf': True, 'apercu_pdf': True, 'taxe': True, 'documents': True,
+                        'profil_general': True, 'sauvegarde_nouveau_pc': True}
     except Exception:
         resultat['erreur'] = traceback.format_exc()
     Path(rapport).write_text(json.dumps(resultat, ensure_ascii=False, indent=2), encoding='utf-8')

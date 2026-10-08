@@ -39,7 +39,7 @@ def preparer(dossier):
     versions = {
         'windows': {'version': VERSION, 'url': serveur + '/fichiers/' + programme.name,
                     'sha256': h.hexdigest(), 'taille': taille, 'format': 'exe',
-                    'notes': 'Sélection lisible, défilement, conditions allégées, fiscalité sans blocage et dates JJ/MM/AA.'},
+                    'notes': 'Profil général configurable, brouillons conservés, aperçu PDF et sauvegardes récupérables sur un nouveau PC.'},
         'android': {'version': '0.3.7', 'url': serveur + '/fichiers/Patenteasy-Android-0.3.7.apk',
                     'sha256': '7d6899b90c63ed6eb83f95a20adb8a714b23f4a9be1b061d1bfebca52e9271ff',
                     'taille': 427542, 'format': 'apk', 'notes': 'Beta Android 0.3.7.'}

@@ -1,7 +1,7 @@
 name: Distribution Windows
 on:
   push:
-    branches: ['release/windows-0.3.9']
+    branches: ['release/windows-0.4.0']
   workflow_dispatch:
 permissions:
   contents: write
@@ -24,7 +24,7 @@ jobs:
       - name: Construction native
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --name Patenteasy --icon static/patenteasy.ico --hidden-import qt_app --hidden-import database --hidden-import gestion --hidden-import editeur --hidden-import mises_a_jour --hidden-import installer_mise_a_jour --hidden-import verification_distribution --hidden-import publication_release --hidden-import pdf_documents --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --add-data "static;static" --add-data "configuration_editeur.json;." --add-data "LICENSE;." application_windows.py
+          python -m PyInstaller --noconfirm --clean --windowed --name Patenteasy --icon static/patenteasy.ico --hidden-import qt_app --hidden-import database --hidden-import gestion --hidden-import editeur --hidden-import mises_a_jour --hidden-import installer_mise_a_jour --hidden-import verification_distribution --hidden-import publication_release --hidden-import regional --hidden-import localisation --hidden-import sauvegarde_portable --hidden-import recuperation_ui --hidden-import apercu_pdf --hidden-import PySide6.QtPdf --hidden-import PySide6.QtPdfWidgets --hidden-import pdf_documents --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --add-data "static;static" --add-data "configuration_editeur.json;." --add-data "LICENSE;." application_windows.py
           if ($LASTEXITCODE -ne 0) { throw 'Construction interrompue' }
       - name: Vérification du programme livré
         shell: pwsh
@@ -33,7 +33,7 @@ jobs:
           $p = Start-Process -FilePath '.\dist\Patenteasy\Patenteasy.exe' -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
           if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme livré invalide' }
           $result = Get-Content $report -Raw | ConvertFrom-Json
-          if (-not $result.ok -or $result.version -ne '0.3.9') { throw 'Vérification échouée' }
+          if (-not $result.ok -or $result.version -ne '0.4.0') { throw 'Vérification échouée' }
           Copy-Item $report distribution/verification-programme.json
       - name: Installeur complet
         shell: pwsh
@@ -50,12 +50,12 @@ jobs:
           New-Item -ItemType Directory -Force $data | Out-Null
           $marker = Join-Path $data 'verification-conservation.txt'
           [IO.File]::WriteAllText($marker, 'donnees-a-conserver')
-          $old = Join-Path $env:RUNNER_TEMP 'Patenteasy-0.3.8.exe'
-          Invoke-WebRequest 'https://github.com/ska-987/Patenteasy/releases/download/v0.3.8-beta/Patenteasy-Windows-0.3.8-Installation.exe' -OutFile $old
-          if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne '714b5eaaacf129adab2669333455cdc3b667020f099a92b2993f7b9c07efab73') { throw 'Ancien installeur invalide' }
+          $old = Join-Path $env:RUNNER_TEMP 'Patenteasy-0.3.9.exe'
+          Invoke-WebRequest 'https://github.com/ska-987/Patenteasy/releases/download/v0.3.9-beta/Patenteasy-Windows-0.3.9-Installation.exe' -OutFile $old
+          if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne '816e85ca5e76a6ece165b6dbf3fc86d054492c2a27fde6824b16b3fefc3ed9dc') { throw 'Ancien installeur invalide' }
           $p = Start-Process -FilePath $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw 'Installation 0.3.8 échouée' }
-          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.3.9-Installation.exe'
+          if ($p.ExitCode -ne 0) { throw 'Installation 0.3.9 échouée' }
+          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.4.0-Installation.exe'
           foreach ($pass in 1..2) {
             $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw 'Installation échouée' }
@@ -69,29 +69,29 @@ jobs:
       - name: Empreinte et sources
         shell: pwsh
         run: |
-          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.3.9-Installation.exe'
+          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.4.0-Installation.exe'
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($exe.Name)" | Set-Content distribution/sortie/SHA256SUMS.txt -Encoding ascii
-          @{ version='0.3.9'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
-          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.3.9.zip HEAD
+          @{ version='0.4.0'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
+          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.4.0.zip HEAD
           Copy-Item distribution/verification-*.json distribution/sortie/
       - name: Dossier de publication
         shell: pwsh
         run: |
           Copy-Item distribution/Preparer-publication.vbs distribution/sortie/
-          Copy-Item distribution/PUBLICATION-0.3.9.txt distribution/sortie/
-          Compress-Archive -Path distribution/sortie/Patenteasy-Windows-0.3.9-Installation.exe,distribution/sortie/version-verifiee.json,distribution/sortie/Preparer-publication.vbs,distribution/sortie/PUBLICATION-0.3.9.txt -DestinationPath distribution/Patenteasy-Publication-Windows-0.3.9.zip
-          Move-Item distribution/Patenteasy-Publication-Windows-0.3.9.zip distribution/sortie/
+          Copy-Item distribution/PUBLICATION-0.4.0.txt distribution/sortie/
+          Compress-Archive -Path distribution/sortie/Patenteasy-Windows-0.4.0-Installation.exe,distribution/sortie/version-verifiee.json,distribution/sortie/Preparer-publication.vbs,distribution/sortie/PUBLICATION-0.4.0.txt -DestinationPath distribution/Patenteasy-Publication-Windows-0.4.0.zip
+          Move-Item distribution/Patenteasy-Publication-Windows-0.4.0.zip distribution/sortie/
       - name: Livraison de la version vérifiée
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release create v0.3.9-beta distribution/sortie/* --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Patenteasy Windows 0.3.9" --prerelease --notes-file distribution/PUBLICATION-0.3.9.txt
+          gh release create v0.4.0-beta distribution/sortie/* --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Patenteasy Windows 0.4.0" --prerelease --notes-file distribution/PUBLICATION-0.4.0.txt
           if ($LASTEXITCODE -ne 0) { throw 'Publication de la version échouée' }
       - uses: actions/upload-artifact@v4
         with:
-          name: Patenteasy-Windows-0.3.9
+          name: Patenteasy-Windows-0.4.0
           path: distribution/sortie/*
           if-no-files-found: error
           retention-days: 30

@@ -52,12 +52,12 @@ class GestionSauvegardes:
             with zipfile.ZipFile(flux,'w',zipfile.ZIP_DEFLATED) as z:
                 z.writestr('base.db',Path(tmp).read_bytes())
                 z.writestr('acces.json',self.coffre.metadata.read_bytes())
-            nonce=secrets.token_bytes(12)
-            contenu=MAGIC+nonce+AESGCM(self.coffre.cle).encrypt(nonce,flux.getvalue(),MAGIC)
+            from sauvegarde_portable import emballer
+            contenu=emballer(flux.getvalue(),self.coffre.cle,self.coffre.lire())
             temporaire=destination.with_suffix('.part')
             with temporaire.open('wb') as f:f.write(contenu);f.flush();os.fsync(f.fileno())
             os.replace(temporaire,destination)
-            m=self.coffre.lire();m['sauvegardes'].update(derniere=datetime.now().isoformat(),dernier_jour=datetime.now().date().isoformat(),erreur='');ecrire_json(self.coffre.metadata,m)
+            m=self.coffre.lire();m['sauvegardes'].update(derniere=datetime.now().isoformat(),dernier_jour=datetime.now().date().isoformat(),erreur='',format=2);ecrire_json(self.coffre.metadata,m)
             self.comptes.tracer('Sauvegarde',raison)
             self._retenir(configuration)
             return destination
@@ -80,31 +80,13 @@ class GestionSauvegardes:
     def automatique(self):
         c=self.configuration()
         if not c['dossier']:return None
-        if c.get('dernier_jour')==datetime.now().date().isoformat():return None
+        if c.get('dernier_jour')==datetime.now().date().isoformat() and c.get('format')==2:return None
         return self.creer('auto')
 
     def restaurer(self,fichier):
         self.comptes.exiger_admin()
-        p=Path(fichier)
-        if p.stat().st_size>500_000_000:raise ValueError('Sauvegarde trop volumineuse.')
-        contenu=p.read_bytes()
-        if not contenu.startswith(MAGIC):raise ValueError('Sauvegarde chiffrée Patenteasy requise.')
-        debut=len(MAGIC);nonce=contenu[debut:debut+12]
-        try:clair=AESGCM(self.coffre.cle).decrypt(nonce,contenu[debut+12:],MAGIC)
-        except Exception:raise ValueError('Sauvegarde endommagée ou provenant d’un autre coffre.') from None
-        with zipfile.ZipFile(io.BytesIO(clair)) as z:
-            base=z.read('base.db');metadata=json.loads(z.read('acces.json'))
-        temp=self.coffre.chemin.with_name('restauration.db')
-        temp.write_bytes(base)
-        try:
-            c=self.coffre.ouvrir(temp)
-            try:
-                if c.execute('PRAGMA integrity_check').fetchone()[0]!='ok' or c.execute('PRAGMA cipher_integrity_check').fetchall():raise ValueError('Sauvegarde invalide.')
-            finally:c.close()
-            self.creer('avant-restauration')
-            # Journal de reprise pour remplacer les deux fichiers après interruption.
-            metadata['sauvegardes']=self.configuration()
-            ecrire_json(self.coffre.chemin.parent/'restauration-acces.json',metadata)
-            os.replace(temp,self.coffre.chemin)
-            os.replace(self.coffre.chemin.parent/'restauration-acces.json',self.coffre.metadata)
-        finally:temp.unlink(missing_ok=True)
+        from sauvegarde_portable import preparer, verifier, installer
+        preparation = preparer(fichier, '', cle_existante=self.coffre.cle)
+        verifier(preparation, self.coffre.chemin.parent)
+        self.creer('avant-restauration')
+        installer(preparation, self.coffre, self.configuration())

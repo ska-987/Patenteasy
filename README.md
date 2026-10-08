@@ -1,6 +1,6 @@
 # Patenteasy
 
-**Version Windows :** 0.3.9  
+**Version Windows :** 0.4.0
 **Version Android :** 0.3.7
 
 Application de gestion locale pour indépendants, artisans et petites entreprises.
@@ -13,7 +13,7 @@ Application de gestion locale pour indépendants, artisans et petites entreprise
 
 Patenteasy existe en deux éditions locales indépendantes :
 
-- **Windows 0.3.9** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
+- **Windows 0.4.0** : interface de bureau native PySide6/Qt, sans Edge/WebView2 et sans serveur HTTP local ;
 - **Android 0.3.7** : application hors ligne avec stockage local sur le téléphone.
 
 Il n'y a pas de synchronisation automatique entre Windows et Android.
@@ -28,13 +28,27 @@ Téléchargez l’installeur complet depuis les versions publiées du dépôt. I
 le programme et ses dépendances ; Python n’est pas nécessaire. Installez par-dessus
 la version actuelle pour conserver les comptes et les données.
 
-La version 0.3.9 améliore la sélection et le défilement, simplifie les conditions et
-la fiscalité, et permet de saisir six chiffres pour les dates JJ/MM/AA. Le calendrier
-reste disponible. Le CA reste facultatif et son rappel ne bloque pas les documents.
+La version 0.4.0 propose un profil général : pays facultatif, devise libre à trois lettres,
+précision de 0 à 4 décimales, interface français/anglais, dates JJ/MM/AA, MM/JJ/AA ou
+AAAA-MM-JJ. Choisissez la devise avant d’enregistrer des montants ; les montants déjà
+enregistrés ne sont jamais convertis automatiquement. Les anciens profils conservent
+la devise XPF et leurs deux décimales historiques.
+
+Les identifiants professionnels et conditions restent facultatifs. Le choix de taxe
+est défini par l’utilisateur. Le CA reste facultatif ; le rappel de 10 millions
+concerne uniquement la Polynésie avec la devise XPF et ne bloque aucun document.
+Le logiciel n’assure pas la conformité réglementaire de chaque pays.
+
+Les brouillons conservent automatiquement les champs saisis, y compris une date
+incomplète. L’aperçu PDF reprend les dernières données valides. Les nouvelles
+sauvegardes chiffrées se récupèrent sur un PC sans données depuis l’écran de création
+de compte, avec le mot de passe administrateur ou le code correspondant au moment
+de la sauvegarde. Les anciennes sauvegardes nécessitent aussi le fichier acces.json
+sur un autre PC. Conservez les sauvegardes et secrets de récupération hors du PC.
 
 Les mises à jour sont vérifiées automatiquement à l’ouverture avec un catalogue
 signé. Le dossier de publication et son assistant sont décrits dans
-[distribution/PUBLICATION-0.3.9.txt](distribution/PUBLICATION-0.3.9.txt).
+[distribution/PUBLICATION-0.4.0.txt](distribution/PUBLICATION-0.4.0.txt).
 
 ## Architecture
 

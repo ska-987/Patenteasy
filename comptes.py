@@ -15,7 +15,29 @@ class GestionComptes:
         self.coffre = Coffre(self.base.chemin)
         self.session = None
 
-    def initialiser(self): pass
+    def initialiser(self):
+        from sauvegarde_portable import reprendre
+        reprendre(self.coffre)
+
+    def restaurer_nouveau_pc(self, preparation, nouveau_mot_de_passe=None, code=None):
+        if self.coffre.metadata.exists() or self.base.chemin.exists():
+            raise ValueError('La récupération sur un nouveau PC nécessite un espace sans données existantes.')
+        from sauvegarde_portable import verifier, installer
+        if nouveau_mot_de_passe is not None:
+            self.valider_mot_de_passe(nouveau_mot_de_passe)
+            try:
+                cle = desenvelopper(preparation['metadata']['recuperation'], code, 'recuperation')
+                if not hmac.compare_digest(cle, preparation['cle']): raise ValueError()
+            except Exception:
+                raise ValueError('Code de récupération incorrect.') from None
+        verifier(preparation, self.base.chemin.parent)
+        installer(preparation, self.coffre)
+        self.session = preparation['compte']
+        self.coffre.activer(preparation['cle'], self.session)
+        if nouveau_mot_de_passe is not None:
+            self.recuperer(code, nouveau_mot_de_passe)
+        self.tracer('Récupération sur nouveau PC')
+        return self.session
 
     def premier_compte_requis(self):
         if self.coffre.metadata.exists(): return False

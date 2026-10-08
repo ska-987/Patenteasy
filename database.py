@@ -247,6 +247,10 @@ class BaseDonnees:
             raise ValueError('La précision maximale est de deux décimales.')
         return int(nombre_precis * 100)
 
+    def convertir_montant(self, valeur):
+        from regional import convertir_montant
+        return convertir_montant(valeur, self.obtenir_entreprise())
+
     def ajouter_article(self, reference, designation, type_article='produit', unite='pièce', prix_achat='0', prix_vente='0', taxe='0'):
         reference = reference.strip().upper()
         designation = designation.strip()
@@ -256,8 +260,8 @@ class BaseDonnees:
             raise ValueError('Référence, désignation et unité obligatoires.')
         if type_article not in ('produit', 'service'):
             raise ValueError('Le type doit être produit ou service.')
-        achat = self.convertir_en_centiemes(prix_achat)
-        vente = self.convertir_en_centiemes(prix_vente)
+        achat = self.convertir_montant(prix_achat)
+        vente = self.convertir_montant(prix_vente)
         taux = self.convertir_en_centiemes(taxe)
         if taux > 10000:
             raise ValueError('Le taux de taxe doit être compris entre 0 et 100 %.')
@@ -306,8 +310,8 @@ class BaseDonnees:
             raise ValueError('Référence, désignation et unité obligatoires.')
         if type_article not in ('produit', 'service'):
             raise ValueError('Le type doit être produit ou service.')
-        achat = self.convertir_en_centiemes(prix_achat)
-        vente = self.convertir_en_centiemes(prix_vente)
+        achat = self.convertir_montant(prix_achat)
+        vente = self.convertir_montant(prix_vente)
         taux = self.convertir_en_centiemes(taxe)
         if taux > 10000:
             raise ValueError('Le taux de taxe doit être compris entre 0 et 100 %.')
@@ -403,7 +407,7 @@ class BaseDonnees:
         if not 1900 <= annee <= 9999:
             raise ValueError('L’année est invalide.')
         ca_texte = str(ca_n1).strip()
-        ca_centiemes = self.convertir_en_centiemes(ca_texte) if ca_texte else None
+        ca_centiemes = self.convertir_montant(ca_texte) if ca_texte else None
         option = self.verifier_date_fiscale(date_effet_option_reel, 'Date d’effet de l’option pour le réel')
         depassement = self.verifier_date_fiscale(date_depassement, 'Date de dépassement')
         if depassement:
@@ -440,8 +444,8 @@ class BaseDonnees:
             raise ValueError('Mois invalide.')
         recettes_texte = str(recettes).strip()
         depenses_texte = str(depenses).strip()
-        recettes_centiemes = self.convertir_en_centiemes(recettes_texte) if recettes_texte else None
-        depenses_centiemes = self.convertir_en_centiemes(depenses_texte) if depenses_texte else None
+        recettes_centiemes = self.convertir_montant(recettes_texte) if recettes_texte else None
+        depenses_centiemes = self.convertir_montant(depenses_texte) if depenses_texte else None
         if verifie and (recettes_centiemes is None or depenses_centiemes is None):
             raise ValueError('Renseignez les recettes et les dépenses avant de valider le mois. Saisissez 0 si le montant est réellement nul.')
         with self.session() as connexion:
@@ -519,7 +523,7 @@ class BaseDonnees:
 
     def enregistrer_ca_n1(self, annee, valeur):
         texte = str(valeur).strip()
-        montant = self.convertir_en_centiemes(texte) if texte else None
+        montant = self.convertir_montant(texte) if texte else None
         with self.session() as connexion:
             connexion.execute("""
             INSERT INTO fiscalite_annuelle (
@@ -548,6 +552,9 @@ class BaseDonnees:
             """, (annee, texte))
 
     def proposer_regime_tva(self, annee):
+        from regional import configuration
+        if configuration(self.obtenir_entreprise())['pays'] != 'PF':
+            return {'titre': 'Calcul des taxes', 'message': 'Choisissez le calcul applicable à votre activité. Les obligations déclaratives dépendent du pays.'}
         entreprise = self.obtenir_entreprise() or {}
         fiscalite = self.obtenir_fiscalite_annuelle(annee) or {}
         debut_texte = entreprise.get('date_debut_activite', '')
@@ -631,7 +638,7 @@ class BaseDonnees:
             raise ValueError('Le libellé est obligatoire.')
         if type_operation not in ('recette', 'depense'):
             raise ValueError('Le type d’opération est invalide.')
-        montant_centiemes = self.convertir_en_centiemes(montant)
+        montant_centiemes = self.convertir_montant(montant)
         if montant_centiemes == 0:
             raise ValueError('Le montant doit être supérieur à zéro.')
         entreprise = self.obtenir_entreprise() or {}
@@ -702,7 +709,7 @@ class BaseDonnees:
             raise ValueError('Le libellé est obligatoire.')
         if type_operation not in ('recette', 'depense'):
             raise ValueError('Le type d’opération est invalide.')
-        montant_centiemes = self.convertir_en_centiemes(montant)
+        montant_centiemes = self.convertir_montant(montant)
         if montant_centiemes == 0:
             raise ValueError('Le montant doit être supérieur à zéro.')
         entreprise = self.obtenir_entreprise() or {}
@@ -745,8 +752,6 @@ class BaseDonnees:
             alertes.append(controle['message'])
         if fin and (not controle['complete']) and (not reprises):
             alertes.append(controle['message'])
-        if not debut:
-            alertes.append('La date de début d’activité manque.')
         premier_mois = debut.month if debut and debut.year == annee else 1
         reprises_retenues = [ligne for ligne in reprises if fin and debut and (fin.year == annee) and (fin >= debut) and (premier_mois <= ligne['mois'] <= fin.month)]
         if reprises and (not fin):
@@ -843,7 +848,7 @@ class BaseDonnees:
         if not designation or not unite:
             raise ValueError('La désignation et l’unité sont obligatoires.')
         quantite_centiemes = self.convertir_en_centiemes(quantite)
-        prix_centiemes = self.convertir_en_centiemes(prix_unitaire)
+        prix_centiemes = self.convertir_montant(prix_unitaire)
         taux_centiemes = self.convertir_en_centiemes(taxe)
         if quantite_centiemes == 0:
             raise ValueError('La quantité doit être supérieure à zéro.')
@@ -915,7 +920,7 @@ class BaseDonnees:
         if not designation or not unite:
             raise ValueError('La désignation et l’unité sont obligatoires.')
         quantite_centiemes = self.convertir_en_centiemes(quantite)
-        prix_centiemes = self.convertir_en_centiemes(prix_unitaire)
+        prix_centiemes = self.convertir_montant(prix_unitaire)
         taux_centiemes = self.convertir_en_centiemes(taxe)
         if quantite_centiemes == 0:
             raise ValueError('La quantité doit être supérieure à zéro.')
@@ -955,6 +960,10 @@ class BaseDonnees:
                 raise ValueError('Ligne de devis introuvable.')
 
     def determiner_tva_devis(self, date_devis):
+        from regional import configuration
+        if configuration(self.obtenir_entreprise())['pays'] != 'PF':
+            fiscalite = self.obtenir_fiscalite_annuelle(date.fromisoformat(date_devis).year) or {}
+            return {'applicable': fiscalite.get('regime_confirme') == 'reel', 'message': 'Calcul choisi par l’utilisateur.'}
         jour = date.fromisoformat(date_devis)
         fiscalite = self.obtenir_fiscalite_annuelle(jour.year) or {}
         option = fiscalite.get('date_effet_option_reel', '')

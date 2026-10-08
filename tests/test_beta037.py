@@ -18,7 +18,7 @@ def test_csv_exact_et_cellules_protegees(tmp_path,monkeypatch):
 
 def test_relance_sans_envoi_et_reste_exact(monkeypatch):
     monkeypatch.setattr(bf.g,'document',lambda ident:{'type':'facture','reste':250000,'numero':'fact-00001','echeance':'2026-10-20','contenu':{'client':{'nom':'Jean','email':'jean@example.org'},'entreprise':{'nom':'Atelier'}}})
-    email,body,lien=bf.ServicesBeta(Comptes(),None).relance(1);assert email=='jean@example.org';assert '2 500,00 F CFP' in body;assert 'arrivée' not in body;assert lien.startswith('mailto:')
+    email,body,lien=bf.ServicesBeta(Comptes(),None).relance(1);assert email=='jean@example.org';assert '2 500 XPF' in body;assert 'arrivée' not in body;assert lien.startswith('mailto:')
     with pytest.raises(PermissionError):bf.ServicesBeta(Comptes('utilisateur'),None).relance(1)
 
 def test_alerte_et_sauvegarde_recente(tmp_path):

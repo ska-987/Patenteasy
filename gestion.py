@@ -4,7 +4,8 @@
 import json
 from coffre import sqlite3
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
+import regional
 import database as db
 
 class GestionDocuments:
@@ -14,7 +15,7 @@ class GestionDocuments:
         self.base = base if base is not None else db.base
 
     def aujourd_hui(self):
-        return datetime.now(timezone(timedelta(hours=-10))).date()
+        return date.today()
 
     @contextmanager
     def connexion(self):
@@ -32,6 +33,9 @@ class GestionDocuments:
             c.close()
 
     def migrer(self):
+        ancien = False
+        if self.base.chemin.exists():
+            ancien = bool(self.liste("SELECT name FROM sqlite_master WHERE name='entreprise'"))
         self.base.initialiser_base()
         with self.connexion() as c:
             champs = {'entreprise': {'validite_devis_jours': 'INTEGER NOT NULL DEFAULT 30', 'conditions_vente': "TEXT NOT NULL DEFAULT ''", 'conditions_reglement': "TEXT NOT NULL DEFAULT ''", 'mention_complementaire': "TEXT NOT NULL DEFAULT ''", 'solde_depart_centiemes': 'INTEGER NOT NULL DEFAULT 0', 'date_solde_depart': "TEXT NOT NULL DEFAULT ''", 'periodicite_tva': "TEXT NOT NULL DEFAULT ''"}, 'devis': {'conditions_vente': "TEXT NOT NULL DEFAULT ''", 'conditions_reglement': "TEXT NOT NULL DEFAULT ''", 'mention_complementaire': "TEXT NOT NULL DEFAULT ''", 'regime_document': "TEXT NOT NULL DEFAULT ''", 'numero': 'TEXT', 'instantane': 'TEXT'}, 'fiscalite_annuelle': {'regime_confirme': "TEXT NOT NULL DEFAULT ''", 'date_confirmation': "TEXT NOT NULL DEFAULT ''", 'ca_annee_centiemes': 'INTEGER', 'date_ca': "TEXT NOT NULL DEFAULT ''"}}
@@ -40,6 +44,17 @@ class GestionDocuments:
                 for nom, definition in colonnes.items():
                     if nom not in existants:
                         c.execute(f'ALTER TABLE {table} ADD COLUMN {nom} {definition}')
+            existants = {r[1] for r in c.execute('PRAGMA table_info(entreprise)')}
+            nouveaux = 'devise' not in existants
+            definitions = {'pays': "TEXT NOT NULL DEFAULT ''", 'devise': "TEXT NOT NULL DEFAULT 'EUR'",
+                'decimales': 'INTEGER NOT NULL DEFAULT 2', 'format_date': "TEXT NOT NULL DEFAULT 'dd/MM/yy'",
+                'langue': "TEXT NOT NULL DEFAULT 'fr'", 'nom_taxe': "TEXT NOT NULL DEFAULT 'Taxe'",
+                'mention_sans_taxe': "TEXT NOT NULL DEFAULT ''", 'libelle_identifiant': "TEXT NOT NULL DEFAULT 'Identifiant professionnel'"}
+            for nom, definition in definitions.items():
+                if nom not in existants: c.execute(f'ALTER TABLE entreprise ADD COLUMN {nom} {definition}')
+            if nouveaux and ancien:
+                c.execute("UPDATE entreprise SET pays='PF',devise='XPF',nom_taxe='TVA',libelle_identifiant='N° TAHITI',mention_sans_taxe='TVA non applicable, franchise en base' WHERE id=1")
+            c.execute("CREATE TABLE IF NOT EXISTS brouillons_ui (devis_id INTEGER PRIMARY KEY REFERENCES devis(id) ON DELETE CASCADE, contenu TEXT NOT NULL)")
             c.execute("""CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY, type TEXT NOT NULL CHECK(type IN ('facture','avoir')),
             numero TEXT NOT NULL UNIQUE, date_document TEXT NOT NULL,
@@ -114,23 +129,17 @@ class GestionDocuments:
     def regler_entreprise(self, validite, vente, reglement, mention, periodicite, solde, date_solde):
         if periodicite not in ('', 'mensuelle', 'trimestrielle'):
             raise ValueError('Périodicité invalide.')
-        from decimal import Decimal, InvalidOperation
-        try:
-            valeur = Decimal(solde.replace(',', '.'))
-            if not valeur.is_finite() or abs(valeur) > Decimal('999999999999.99') or valeur != valeur.quantize(Decimal('.01')):
-                raise ValueError('Solde invalide.')
-        except InvalidOperation:
-            raise ValueError('Solde invalide.') from None
+        valeur = regional.convertir_montant(solde, self.base.obtenir_entreprise(), signe=True)
         if date_solde:
             date_solde = self.date_valide(date_solde)
         with self.connexion() as c:
             c.execute("""UPDATE entreprise SET validite_devis_jours=?,conditions_vente=?,conditions_reglement=?,
-            mention_complementaire=?,periodicite_tva=?,solde_depart_centiemes=?,date_solde_depart=? WHERE id=1""", (self.nombre_jours(validite), vente.strip(), reglement.strip(), mention.strip(), periodicite, int(valeur * 100), date_solde))
+            mention_complementaire=?,periodicite_tva=?,solde_depart_centiemes=?,date_solde_depart=? WHERE id=1""", (self.nombre_jours(validite), vente.strip(), reglement.strip(), mention.strip(), periodicite, valeur, date_solde))
 
     def confirmer_fiscalite(self, annee, regime, date_confirmation='', ca='', date_ca=''):
         if regime not in ('', 'franchise', 'reel'):
             raise ValueError('Régime invalide.')
-        montant = self.base.convertir_en_centiemes(ca) if ca.strip() else None
+        montant = self.base.convertir_montant(ca) if ca.strip() else None
         # Les anciennes colonnes restent pour la compatibilité des sauvegardes.
         # Le choix annuel est libre, sans attestation ni date obligatoire.
         date_confirmation = date_ca = ''
@@ -146,8 +155,10 @@ class GestionDocuments:
         return f.get('regime_confirme', '')
 
     def rappel_seuil_ca(self, annee):
+        cfg = regional.configuration(self.base.obtenir_entreprise())
+        if cfg['pays'] != 'PF' or cfg['devise'] != 'XPF': return ''
         f = self.base.obtenir_fiscalite_annuelle(annee) or {}
-        if (f.get('ca_annee_centiemes') or 0) > 10000000 * 100:
+        if (f.get('ca_annee_centiemes') or 0) > 10000000 * (10 ** cfg['decimales']):
             return ('CA supérieur à 10 000 000 F CFP : déclarez le dépassement à la DICP '
                     'dans le mois qui suit. Votre choix de TVA reste modifiable.')
         return ''
@@ -171,14 +182,40 @@ class GestionDocuments:
                 g['tva'] += l['tva']
         ht = sum((l['ht'] for l in lignes))
         tva = sum((l['tva'] for l in lignes))
-        return {'devis': d, 'entreprise': self.base.obtenir_entreprise(), 'client': self.base.obtenir_client(d['client_id']), 'lignes': lignes, 'regime': regime, 'groupes': list(groupes.values()), 'ht': ht, 'tva': tva, 'ttc': ht + tva, 'validite': (date.fromisoformat(d['date_devis']) + timedelta(days=d['validite_jours'])).isoformat(), 'mention_tva': 'TVA non applicable, franchise en base' if regime == 'franchise' else '', 'conditions_vente': d['conditions_vente'], 'conditions_reglement': d['conditions_reglement'], 'mention_complementaire': d['mention_complementaire']}
+        return {'devis': d, 'entreprise': self.base.obtenir_entreprise(), 'client': self.base.obtenir_client(d['client_id']), 'lignes': lignes, 'regime': regime, 'groupes': list(groupes.values()), 'ht': ht, 'tva': tva, 'ttc': ht + tva, 'validite': (date.fromisoformat(d['date_devis']) + timedelta(days=d['validite_jours'])).isoformat(), 'mention_tva': self.base.obtenir_entreprise().get('mention_sans_taxe', '') if regime == 'franchise' else '', 'conditions_vente': d['conditions_vente'], 'conditions_reglement': d['conditions_reglement'], 'mention_complementaire': d['mention_complementaire']}
 
     def verifier_emission(self, s):
         e = s['entreprise']
-        if not e['nom'].strip() or not e['adresse'].strip() or (not e['numero_tahiti'].strip()):
-            raise ValueError('Complétez le nom, l’adresse et le numéro TAHITI de votre entreprise.')
+        if not e['nom'].strip():
+            raise ValueError('Renseignez le nom de votre entreprise.')
         if not s['lignes']:
             raise ValueError('Ajoutez au moins une ligne.')
+
+    def enregistrer_brouillon_ui(self, identifiant, contenu):
+        with self.connexion() as c:
+            row = c.execute('SELECT statut FROM devis WHERE id=?', (identifiant,)).fetchone()
+            if not row or row['statut'] != 'brouillon': return
+            c.execute('INSERT OR REPLACE INTO brouillons_ui VALUES(?,?)', (identifiant, json.dumps(contenu, ensure_ascii=False)))
+
+    def lire_brouillon_ui(self, identifiant):
+        rows = self.liste('SELECT contenu FROM brouillons_ui WHERE devis_id=?', (identifiant,))
+        return json.loads(rows[0]['contenu']) if rows else None
+
+    def regler_region(self, pays, devise, decimales, format_date, langue, nom_taxe, mention_sans_taxe, libelle_identifiant):
+        import re
+        pays, devise = pays.strip().upper(), devise.strip().upper()
+        if pays and not re.fullmatch('[A-Z]{2}', pays): raise ValueError('Choisissez un pays.')
+        if not re.fullmatch('[A-Z]{3}', devise): raise ValueError('Devise : code de trois lettres, par exemple EUR, USD, XPF.')
+        if decimales not in (0,1,2,3,4) or format_date not in regional.FORMATS or langue not in ('fr','en'):
+            raise ValueError('Réglage de format invalide.')
+        with self.connexion() as c:
+            e = dict(c.execute('SELECT * FROM entreprise WHERE id=1').fetchone())
+            if devise != e['devise'] or decimales != e['decimales']:
+                utilise = any(c.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone() for table in ('articles','devis_lignes','operations','documents','reprise_mensuelle'))
+                utilise = utilise or e['solde_depart_centiemes'] != 0 or bool(c.execute('SELECT 1 FROM fiscalite_annuelle WHERE ca_n1_centiemes IS NOT NULL OR ca_annee_centiemes IS NOT NULL LIMIT 1').fetchone())
+                if utilise: raise ValueError('Cette devise est déjà utilisée dans les montants enregistrés. Conservez sa devise et sa précision ; aucune conversion automatique n’est effectuée.')
+            c.execute('UPDATE entreprise SET pays=?,devise=?,decimales=?,format_date=?,langue=?,nom_taxe=?,mention_sans_taxe=?,libelle_identifiant=? WHERE id=1',
+                (pays,devise,decimales,format_date,langue,nom_taxe.strip() or 'Taxe',mention_sans_taxe.strip(),libelle_identifiant.strip()))
 
     def numero(self, c, type_doc, annee):
         import re
@@ -201,6 +238,7 @@ class GestionDocuments:
                 raise ValueError('Ce devis n’est plus un brouillon.')
             s = self.calculer(identifiant)
             self.verifier_emission(s)
+            c.execute('DELETE FROM brouillons_ui WHERE devis_id=?', (identifiant,))
             n = self.numero(c, 'devis', int(d['date_devis'][:4]))
             s['numero'] = n
             c.execute("UPDATE devis SET numero=?,instantane=?,statut='envoye' WHERE id=?", (n, json.dumps(s, ensure_ascii=False), identifiant))
@@ -240,7 +278,7 @@ class GestionDocuments:
                 raise ValueError('Une facture existe déjà pour ce devis.')
             s = json.loads(d['instantane'])
             regime = self.regime_a_la_date(jour)
-            if not regime or regime != s['regime']:
+            if regime != s['regime']:
                 raise ValueError('Le régime a changé ou reste inconnu à la date de facture. Établissez un nouveau devis adapté.')
             if jour < d['date_devis']:
                 raise ValueError('La facture ne peut pas précéder le devis.')
@@ -267,7 +305,7 @@ class GestionDocuments:
 
     def payer(self, identifiant, jour, montant, mode, reference):
         jour = self.date_valide(jour)
-        m = self.base.convertir_en_centiemes(montant)
+        m = self.base.convertir_montant(montant)
         if mode not in ('virement', 'carte', 'especes', 'cheque', 'autre') or m <= 0:
             raise ValueError('Montant ou moyen de paiement invalide.')
         if mode == 'especes' and m % 500:
@@ -336,7 +374,7 @@ class GestionDocuments:
         if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
             raise PermissionError('Action réservée à l’administrateur.')
         jour = self.date_valide(jour)
-        m = self.base.convertir_en_centiemes(montant)
+        m = self.base.convertir_montant(montant)
         if m <= 0 or mode not in ('virement', 'carte', 'especes', 'cheque', 'autre'):
             raise ValueError('Montant ou moyen de remboursement invalide.')
         if mode == 'especes' and m % 500:

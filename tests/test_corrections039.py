@@ -17,6 +17,7 @@ def base(tmp_path, monkeypatch):
     monkeypatch.setattr(db, 'DB_PATH', tmp_path/'test.db')
     monkeypatch.setattr(db, 'DATA_DIR', tmp_path)
     g.migrer()
+    g.regler_region("PF","XPF",2,"dd/MM/yy","fr","TVA","","N° TAHITI")
     db.modifier_entreprise('Atelier', '', '', '', 'Moorea', '123', '')
     cid = db.ajouter_client('Client')
     did = g.creer_devis(cid, g.aujourd_hui().isoformat(), 'Réparation')

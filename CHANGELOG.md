@@ -6,6 +6,17 @@ Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela e
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-08
+
+- Profil général pour tous métiers : pays facultatif, devise, précision, taxe et identifiants personnalisables.
+- Interface français/anglais et trois formats de date avec séparateurs automatiques.
+- Brouillons enregistrés automatiquement, y compris les champs incomplets ; édition des lignes sans perte de l’en-tête.
+- Aperçu PDF natif avec enregistrement du document à jour.
+- Sauvegardes chiffrées autonomes et récupération sur un nouveau PC depuis l’accueil.
+- Conservation des devises, montants et documents historiques lors de la migration.
+- Rappel de 10 millions limité au profil PF/XPF, sans blocage ni choix de taxe imposé.
+- Installation Windows complète et publication des mises à jour signées ; Android reste en 0.3.7.
+
 ## [0.3.9] - 2026-10-08
 
 - Dates : saisie de six chiffres avec séparateurs automatiques JJ/MM/AA et calendrier.

@@ -6,6 +6,7 @@ Aucun navigateur embarqué, WebView ou serveur HTTP n'est utilisé. Les widgets
 PySide6 appellent directement la couche métier SQLite existante.
 """
 from __future__ import annotations
+from localisation import tr
 
 import os
 import subprocess
@@ -20,7 +21,7 @@ from pathlib import Path
 from queue import Queue, Empty
 from threading import Thread
 
-from PySide6.QtCore import QDate, Qt, QUrl, Signal, QSettings, QTimer, QObject, QEvent
+from PySide6.QtCore import QDate, Qt, QUrl, Signal, QSettings, QTimer, QObject, QEvent, QLocale
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -57,6 +58,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import regional
 import database as db
 import gestion as g
 from editeur import editeur
@@ -66,10 +68,22 @@ from pdf_documents import generer, monnaie
 from version import VERSION
 from comptes import GestionComptes
 
+# La valeur métier des listes reste stable quelle que soit la langue affichée.
+_BaseComboBox=QComboBox
+class QComboBox(_BaseComboBox):
+    def addItem(self,text,userData=None):
+        super().addItem(text if isinstance(userData,int) else tr(text),userData)
+    def addItems(self,texts):
+        for text in texts:self.addItem(text)
+    def currentText(self):
+        from localisation import original
+        return original(super().currentText())
+    def setCurrentText(self,text):super().setCurrentText(tr(text))
+
 ROOT = Path(__file__).resolve().parent
 MOIS = [
-    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
+    tr("Janvier"), tr("Février"), tr(tr("Mars")), tr(tr("Avril")), tr(tr("Mai")), tr(tr("Juin")),
+    tr("Juillet"), tr("Août"), tr(tr("Septembre")), tr(tr("Octobre")), tr(tr("Novembre")), tr(tr("Décembre")),
 ]
 
 APP_QSS = r"""
@@ -194,13 +208,17 @@ QMessageBox { background: #f4f6f9; }
 
 
 def fcfp(centimes: int | None) -> str:
-    return "—" if centimes is None else f"{monnaie(int(centimes))} F"
+    return regional.montant(centimes)
 
 
 def decimal_text(centimes: int | None) -> str:
     if centimes is None:
         return ""
-    return monnaie(int(centimes)).replace(" ", "")
+    return regional.nombre(int(centimes), langue=regional.configuration()["langue"], groupe=False)
+
+
+def money_text(value):
+    return regional.montant(value, unite=False, saisie=True)
 
 
 def qdate_from_iso(value: str | None, fallback_today: bool = True) -> QDate:
@@ -220,11 +238,12 @@ class DateInput(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.entry = QLineEdit()
-        self.entry.setInputMask("00/00/00;_")
-        self.entry.setToolTip("JJ/MM/AA · tapez les six chiffres, par exemple 081026")
+        self.format = regional.configuration()['format_date']
+        self.entry.setInputMask("0000-00-00;_" if self.format == 'yyyy-MM-dd' else "00/00/00;_")
+        self.entry.setToolTip(regional.FORMATS[self.format])
         self.setFocusProxy(self.entry)
-        self.calendar_button = QPushButton("Calendrier")
-        self.calendar_button.setToolTip("Choisir une date dans le calendrier")
+        self.calendar_button = QPushButton(tr("Calendrier"))
+        self.calendar_button.setToolTip(tr("Choisir une date dans le calendrier"))
         self.calendar_button.clicked.connect(self.open_calendar)
         layout.addWidget(self.entry, 1)
         layout.addWidget(self.calendar_button)
@@ -233,9 +252,9 @@ class DateInput(QWidget):
 
     def setDate(self, value):
         if not value.isValid():
-            raise ValueError("Date invalide.")
+            raise ValueError(tr("Date invalide."))
         self._original = value
-        self.entry.setText(value.toString("dd/MM/yy"))
+        self.entry.setText(value.toString(self.format))
 
     def clear(self):
         self._original = QDate()
@@ -245,18 +264,24 @@ class DateInput(QWidget):
         digits = ''.join(c for c in self.entry.text() if c.isdigit())
         if not digits and self.optional:
             return QDate()
-        if len(digits) != 6:
-            raise ValueError("Complétez la date au format JJ/MM/AA.")
-        if self._original.isValid() and self.entry.text() == self._original.toString("dd/MM/yy"):
+        attendu = 8 if self.format == 'yyyy-MM-dd' else 6
+        if len(digits) != attendu:
+            raise ValueError("Complétez la date au format " + regional.FORMATS[self.format] + ".")
+        if self._original.isValid() and self.entry.text() == self._original.toString(self.format):
             return self._original
-        result = QDate(2000 + int(digits[4:]), int(digits[2:4]), int(digits[:2]))
+        if self.format == 'yyyy-MM-dd':
+            result = QDate(int(digits[:4]), int(digits[4:6]), int(digits[6:]))
+        elif self.format == 'MM/dd/yy':
+            result = QDate(2000 + int(digits[4:]), int(digits[:2]), int(digits[2:4]))
+        else:
+            result = QDate(2000 + int(digits[4:]), int(digits[2:4]), int(digits[:2]))
         if not result.isValid():
-            raise ValueError("Cette date n’existe pas. Utilisez le format JJ/MM/AA.")
+            raise ValueError("Cette date n’existe pas. Utilisez " + regional.FORMATS[self.format] + ".")
         return result
 
     def open_calendar(self):
         dialog = QDialog(self)
-        dialog.setWindowTitle("Choisir une date")
+        dialog.setWindowTitle(tr("Choisir une date"))
         layout = QVBoxLayout(dialog)
         calendar = QCalendarWidget()
         calendar.setGridVisible(True)
@@ -292,6 +317,12 @@ def button(text: str, slot=None, *, secondary=False, danger=False) -> QPushButto
     if slot:
         b.clicked.connect(slot)
     return b
+
+
+class DateTableItem(QTableWidgetItem):
+    def __lt__(self, other):
+        a, b = self.data(Qt.UserRole + 1), other.data(Qt.UserRole + 1)
+        return a < b if a and b else super().__lt__(other)
 
 
 class TableInteraction(QObject):
@@ -354,7 +385,12 @@ def fill_table(table: QTableWidget, rows: list[list[object]], ids: list[int] | N
     table.setRowCount(len(rows))
     for r, values in enumerate(rows):
         for c, value in enumerate(values):
-            item = QTableWidgetItem("" if value is None else str(value))
+            texte = "" if value is None else str(value)
+            import re
+            if re.fullmatch(r'\d{4}-\d{2}-\d{2}', texte):
+                item = DateTableItem(regional.afficher_date(texte))
+                item.setData(Qt.UserRole + 1, texte)
+            else: item = QTableWidgetItem(texte)
             if c == 0 and ids is not None:
                 item.setData(Qt.ItemDataRole.UserRole, ids[r])
             table.setItem(r, c, item)
@@ -372,11 +408,11 @@ def selected_id(table: QTableWidget) -> int | None:
 
 
 def show_error(parent, exc: BaseException):
-    QMessageBox.critical(parent, "Patenteasy", str(exc))
+    QMessageBox.critical(parent, "Patenteasy", tr(str(exc)))
 
 
 def show_info(parent, text: str):
-    QMessageBox.information(parent, "Patenteasy", text)
+    QMessageBox.information(parent, "Patenteasy", tr(text))
 
 
 def confirm(parent, text: str) -> bool:
@@ -384,7 +420,7 @@ def confirm(parent, text: str) -> bool:
 
 
 def save_pdf(parent, contents: bytes, suggested: str):
-    path, _ = QFileDialog.getSaveFileName(parent, "Enregistrer le PDF", suggested, "Document PDF (*.pdf)")
+    path, _ = QFileDialog.getSaveFileName(parent, tr("Enregistrer le PDF"), suggested, "Document PDF (*.pdf)")
     if path:
         Path(path).write_bytes(contents)
         show_info(parent, f"PDF enregistré :\n{path}")
@@ -394,7 +430,7 @@ def backup_database(parent):
     fenetre = parent.window()
     try:
         fichier = fenetre.sauvegardes.creer()
-        show_info(parent, "Sauvegarde chiffrée créée.")
+        show_info(parent, tr("Sauvegarde chiffrée créée."))
         return fichier
     except Exception as exc:
         show_error(parent, exc)
@@ -404,14 +440,14 @@ def backup_database(parent):
 def export_journal_csv(parent) -> Path | None:
     if not exiger_admin(parent): return None
     suggested = f"journal-{g.aujourd_hui().year}.csv"
-    path, _ = QFileDialog.getSaveFileName(parent, "Exporter le journal", suggested, "CSV (*.csv)")
+    path, _ = QFileDialog.getSaveFileName(parent, tr("Exporter le journal"), suggested, "CSV (*.csv)")
     if not path:
         return None
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
-    writer.writerow(["Date", "Libellé", "Type", "Montant F CFP"])
+    writer.writerow([tr("Date"), tr("Libellé"), tr(tr("Type")), "Montant " + regional.configuration()["devise"]])
     for op in db.lister_operations(g.aujourd_hui().year):
-        writer.writerow([op["date_operation"], op["libelle"], op["type_operation"], decimal_text(op["montant_centiemes"])])
+        writer.writerow([op["date_operation"], op["libelle"], op["type_operation"], money_text(op["montant_centiemes"])])
     Path(path).write_text("\ufeff" + output.getvalue(), encoding="utf-8")
     show_info(parent, f"Journal exporté :\n{path}")
     return Path(path)
@@ -495,16 +531,16 @@ class FormDialog(QDialog):
 
 class ClientDialog(FormDialog):
     def __init__(self, data=None, parent=None):
-        super().__init__("Client", parent)
+        super().__init__(tr("Client"), parent)
         data = data or {}
         self.nom = QLineEdit(data.get("nom", ""))
         self.tel = QLineEdit(data.get("telephone", ""))
         self.email = QLineEdit(data.get("email", ""))
         self.adresse = QTextEdit(data.get("adresse", ""))
-        self.form.addRow("Nom *", self.nom)
-        self.form.addRow("Téléphone", self.tel)
-        self.form.addRow("Adresse e-mail", self.email)
-        self.form.addRow("Adresse", self.adresse)
+        self.form.addRow(tr("Nom *"), self.nom)
+        self.form.addRow(tr("Téléphone"), self.tel)
+        self.form.addRow(tr("Adresse e-mail"), self.email)
+        self.form.addRow(tr("Adresse"), self.adresse)
 
     def values(self):
         return self.nom.text(), self.tel.text(), self.email.text(), self.adresse.toPlainText()
@@ -512,25 +548,25 @@ class ClientDialog(FormDialog):
 
 class ArticleDialog(FormDialog):
     def __init__(self, data=None, parent=None):
-        super().__init__("Article / prestation", parent)
+        super().__init__(tr("Article / prestation"), parent)
         data = data or {}
         self.reference = QLineEdit(data.get("reference", ""))
         self.designation = QLineEdit(data.get("designation", ""))
         self.type_article = QComboBox()
-        self.type_article.addItem("Produit", "produit")
-        self.type_article.addItem("Prestation", "service")
+        self.type_article.addItem(tr("Produit"), "produit")
+        self.type_article.addItem(tr("Prestation"), "service")
         self.type_article.setCurrentIndex(max(0, self.type_article.findData(data.get("type_article", "produit"))))
         self.unite = QLineEdit(data.get("unite", "pièce"))
-        self.achat = QLineEdit(decimal_text(data.get("prix_achat_centiemes", 0)))
-        self.vente = QLineEdit(decimal_text(data.get("prix_vente_centiemes", 0)))
+        self.achat = QLineEdit(money_text(data.get("prix_achat_centiemes", 0)))
+        self.vente = QLineEdit(money_text(data.get("prix_vente_centiemes", 0)))
         self.taxe = QLineEdit(decimal_text(data.get("taxe_centiemes", 0)))
-        self.form.addRow("Référence *", self.reference)
-        self.form.addRow("Désignation *", self.designation)
-        self.form.addRow("Type", self.type_article)
-        self.form.addRow("Unité", self.unite)
-        self.form.addRow("Prix d’achat · F CFP", self.achat)
-        self.form.addRow("Prix de vente HT · F CFP", self.vente)
-        self.form.addRow("TVA à la vente · %", self.taxe)
+        self.form.addRow(tr("Référence *"), self.reference)
+        self.form.addRow(tr("Désignation *"), self.designation)
+        self.form.addRow(tr("Type"), self.type_article)
+        self.form.addRow(tr("Unité"), self.unite)
+        self.form.addRow("Prix d’achat · " + regional.configuration()["devise"] + "", self.achat)
+        self.form.addRow("Prix de vente HT · " + regional.configuration()["devise"] + "", self.vente)
+        self.form.addRow(tr("Taxe à la vente · %"), self.taxe)
 
     def values(self):
         return (
@@ -541,19 +577,19 @@ class ArticleDialog(FormDialog):
 
 class OperationDialog(FormDialog):
     def __init__(self, data=None, parent=None):
-        super().__init__("Opération", parent)
+        super().__init__(tr("Opération"), parent)
         data = data or {}
         self.date = make_date(data.get("date_operation"))
         self.libelle = QLineEdit(data.get("libelle", ""))
         self.type = QComboBox()
-        self.type.addItem("Recette", "recette")
-        self.type.addItem("Dépense", "depense")
+        self.type.addItem(tr("Recette"), "recette")
+        self.type.addItem(tr("Dépense"), "depense")
         self.type.setCurrentIndex(max(0, self.type.findData(data.get("type_operation", "recette"))))
-        self.montant = QLineEdit(decimal_text(data.get("montant_centiemes")))
-        self.form.addRow("Date", self.date)
-        self.form.addRow("Libellé", self.libelle)
-        self.form.addRow("Type", self.type)
-        self.form.addRow("Montant · F CFP", self.montant)
+        self.montant = QLineEdit(money_text(data.get("montant_centiemes")))
+        self.form.addRow(tr("Date"), self.date)
+        self.form.addRow(tr("Libellé"), self.libelle)
+        self.form.addRow(tr("Type"), self.type)
+        self.form.addRow("Montant · " + regional.configuration()["devise"] + "", self.montant)
 
     def values(self):
         return iso_date(self.date), self.libelle.text(), self.type.currentData(), self.montant.text()
@@ -561,15 +597,15 @@ class OperationDialog(FormDialog):
 
 class QuoteCreateDialog(FormDialog):
     def __init__(self, parent=None):
-        super().__init__("Nouveau devis", parent)
+        super().__init__(tr("Nouveau devis"), parent)
         self.client = QComboBox()
         for item in db.lister_clients():
             self.client.addItem(item["nom"], item["id"])
         self.date = make_date(g.aujourd_hui().isoformat())
         self.objet = QLineEdit()
-        self.form.addRow("Client", self.client)
-        self.form.addRow("Date", self.date)
-        self.form.addRow("Objet", self.objet)
+        self.form.addRow(tr("Client"), self.client)
+        self.form.addRow(tr("Date"), self.date)
+        self.form.addRow(tr("Objet"), self.objet)
 
     def values(self):
         return self.client.currentData(), iso_date(self.date), self.objet.text()
@@ -577,29 +613,29 @@ class QuoteCreateDialog(FormDialog):
 
 class QuoteLineDialog(FormDialog):
     def __init__(self, data=None, allow_catalog=True, parent=None):
-        super().__init__("Ligne de devis", parent)
+        super().__init__(tr("Ligne de devis"), parent)
         data = data or {}
         self.reference = QLineEdit(data.get("reference", ""))
         self.designation = QLineEdit(data.get("designation", ""))
         self.unite = QLineEdit(data.get("unite", "pièce"))
         self.quantite = QLineEdit(decimal_text(data.get("quantite_centiemes", 100)) or "1")
-        self.prix = QLineEdit(decimal_text(data.get("prix_unitaire_centiemes", 0)))
+        self.prix = QLineEdit(money_text(data.get("prix_unitaire_centiemes", 0)))
         self.taxe = QLineEdit(decimal_text(data.get("taxe_centiemes", 0)))
-        self.catalogue = QCheckBox("Enregistrer aussi dans le catalogue")
+        self.catalogue = QCheckBox(tr("Enregistrer aussi dans le catalogue"))
         self.catalogue.setVisible(allow_catalog)
         self.type = QComboBox()
-        self.type.addItem("Produit", "produit")
-        self.type.addItem("Prestation", "service")
+        self.type.addItem(tr("Produit"), "produit")
+        self.type.addItem(tr("Prestation"), "service")
         self.type.setVisible(allow_catalog)
-        self.form.addRow("Référence", self.reference)
-        self.form.addRow("Désignation *", self.designation)
-        self.form.addRow("Unité *", self.unite)
+        self.form.addRow(tr("Référence"), self.reference)
+        self.form.addRow(tr("Désignation *"), self.designation)
+        self.form.addRow(tr("Unité *"), self.unite)
         self.form.addRow("Quantité *", self.quantite)
-        self.form.addRow("Prix unitaire HT · F CFP", self.prix)
-        self.form.addRow("TVA · %", self.taxe)
+        self.form.addRow("Prix unitaire HT · " + regional.configuration()["devise"] + "", self.prix)
+        self.form.addRow(tr("Taxe · %"), self.taxe)
         if allow_catalog:
             self.form.addRow("", self.catalogue)
-            self.form.addRow("Type catalogue", self.type)
+            self.form.addRow(tr("Type catalogue"), self.type)
 
     def values(self):
         return (
@@ -610,14 +646,14 @@ class QuoteLineDialog(FormDialog):
 
 class CatalogLineDialog(FormDialog):
     def __init__(self, parent=None):
-        super().__init__("Ajouter depuis le catalogue", parent)
+        super().__init__(tr("Ajouter depuis le catalogue"), parent)
         self.article = QComboBox()
         self.articles = db.lister_articles()
         for a in self.articles:
             self.article.addItem(f'{a["reference"]} — {a["designation"]} · {fcfp(a["prix_vente_centiemes"])} HT', a["id"])
         self.quantite = QLineEdit("1")
-        self.form.addRow("Catalogue", self.article)
-        self.form.addRow("Quantité", self.quantite)
+        self.form.addRow(tr("Catalogue"), self.article)
+        self.form.addRow(tr("Quantité"), self.quantite)
 
     def values(self):
         aid = self.article.currentData()
@@ -627,19 +663,19 @@ class CatalogLineDialog(FormDialog):
 
 class PaymentDialog(FormDialog):
     def __init__(self, refund=False, parent=None):
-        super().__init__("Remboursement" if refund else "Paiement reçu", parent)
+        super().__init__(tr("Remboursement") if refund else tr("Paiement reçu"), parent)
         self.date = make_date(g.aujourd_hui().isoformat())
         self.amount = QLineEdit()
         self.mode = QComboBox()
-        for text, key in [("Virement", "virement"), ("Carte", "carte"), ("Espèces", "especes"), ("Chèque", "cheque"), ("Autre", "autre")]:
+        for text, key in [(tr("Virement"), "virement"), (tr("Carte"), "carte"), (tr("Espèces"), "especes"), (tr(tr("Chèque")), "cheque"), (tr(tr("Autre")), "autre")]:
             self.mode.addItem(text, key)
         self.reference = QLineEdit()
         self.reference.setVisible(not refund)
-        self.form.addRow("Date", self.date)
-        self.form.addRow("Montant · F CFP", self.amount)
-        self.form.addRow("Moyen", self.mode)
+        self.form.addRow(tr("Date"), self.date)
+        self.form.addRow("Montant · " + regional.configuration()["devise"] + "", self.amount)
+        self.form.addRow(tr("Moyen"), self.mode)
         if not refund:
-            self.form.addRow("Référence", self.reference)
+            self.form.addRow(tr("Référence"), self.reference)
 
     def values(self):
         return iso_date(self.date), self.amount.text(), self.mode.currentData(), self.reference.text()
@@ -648,7 +684,7 @@ class PaymentDialog(FormDialog):
 class CreditDialog(QDialog):
     def __init__(self, document, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Émettre un avoir")
+        self.setWindowTitle(tr("Émettre un avoir"))
         self.setMinimumWidth(600)
         outer = QVBoxLayout(self)
         self.scroll = QScrollArea()
@@ -669,7 +705,7 @@ class CreditDialog(QDialog):
             self.fields[str(line["id"])] = field
         root.addLayout(form)
         self.motif = QTextEdit()
-        root.addWidget(QLabel("Motif de correction"))
+        root.addWidget(QLabel(tr("Motif de correction")))
         root.addWidget(self.motif)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -682,21 +718,21 @@ class CreditDialog(QDialog):
 
 class StockDialog(FormDialog):
     def __init__(self, parent=None):
-        super().__init__("Mouvement de stock", parent)
+        super().__init__(tr("Mouvement de stock"), parent)
         self.article = QComboBox()
         for a in g.stock():
             self.article.addItem(f'{a["reference"]} — {a["designation"]}', a["id"])
         self.date = make_date(g.aujourd_hui().isoformat())
         self.quantity = QLineEdit("1")
         self.direction = QComboBox()
-        self.direction.addItem("Entrée", "entree")
-        self.direction.addItem("Sortie", "sortie")
+        self.direction.addItem(tr("Entrée"), "entree")
+        self.direction.addItem(tr("Sortie"), "sortie")
         self.reason = QLineEdit()
-        self.form.addRow("Produit", self.article)
-        self.form.addRow("Date", self.date)
-        self.form.addRow("Quantité", self.quantity)
-        self.form.addRow("Sens", self.direction)
-        self.form.addRow("Motif", self.reason)
+        self.form.addRow(tr("Produit"), self.article)
+        self.form.addRow(tr("Date"), self.date)
+        self.form.addRow(tr("Quantité"), self.quantity)
+        self.form.addRow(tr("Sens"), self.direction)
+        self.form.addRow(tr("Motif"), self.reason)
 
     def values(self):
         return self.article.currentData(), iso_date(self.date), self.quantity.text(), self.direction.currentData(), self.reason.text()
@@ -704,13 +740,13 @@ class StockDialog(FormDialog):
 
 class ReminderDialog(FormDialog):
     def __init__(self, parent=None):
-        super().__init__("Nouvelle échéance", parent)
+        super().__init__(tr("Nouvelle échéance"), parent)
         self.title = QLineEdit()
         self.date = make_date(g.aujourd_hui().isoformat())
         self.source = QLineEdit()
-        self.form.addRow("Titre", self.title)
-        self.form.addRow("Échéance", self.date)
-        self.form.addRow("Lien source", self.source)
+        self.form.addRow(tr("Titre"), self.title)
+        self.form.addRow(tr("Échéance"), self.date)
+        self.form.addRow(tr("Lien source"), self.source)
 
     def values(self):
         return self.title.text().strip(), iso_date(self.date), self.source.text().strip()
@@ -738,7 +774,7 @@ class UpdateInstructionsDialog(QDialog):
         text = QLabel("Dans le dossier Proton :\n\n1. Ouvrez « Mise à jour Windows ».\n2. Téléchargez l’installateur le plus récent.\n3. Fermez Patenteasy.\n4. Lancez l’installateur par-dessus la version actuelle.\n\nSauvegardez vos données avant la mise à jour. Ne désinstallez pas Patenteasy.")
         text.setWordWrap(True); v.addWidget(text)
         bar = QHBoxLayout(); bar.addStretch()
-        bar.addWidget(button("Annuler", self.reject, secondary=True))
+        bar.addWidget(button(tr("Annuler"), self.reject, secondary=True))
         bar.addWidget(button("Ouvrir les téléchargements", self.accept))
         v.addLayout(bar)
 
@@ -746,20 +782,20 @@ class UpdateInstructionsDialog(QDialog):
 class NewsletterDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Bienvenue dans Patenteasy")
+        self.setWindowTitle(tr("Bienvenue dans Patenteasy"))
         self.setFixedWidth(530)
         self.setMinimumHeight(270)
         v = QVBoxLayout(self); v.setContentsMargins(22, 20, 22, 20); v.setSpacing(12)
         text = QLabel("Vous souhaitez être informé des nouveautés et des logiciels de ska_987 ?")
         text.setWordWrap(True); v.addWidget(text)
-        self.email = QLineEdit(); self.email.setPlaceholderText("Votre adresse mail")
+        self.email = QLineEdit(); self.email.setPlaceholderText(tr("Votre adresse mail"))
         self.email.setMaxLength(254); v.addWidget(self.email)
         note = QLabel("Facultatif. Votre messagerie s’ouvre avec une demande prête à envoyer. Cliquez ensuite sur Envoyer.")
         note.setWordWrap(True); v.addWidget(note)
         self.status = QLabel(); self.status.setWordWrap(True); v.addWidget(self.status)
         bar = QHBoxLayout(); bar.addStretch()
-        bar.addWidget(button("Plus tard", self.reject, secondary=True))
-        bar.addWidget(button("Je souhaite être informé", self.demander))
+        bar.addWidget(button(tr("Plus tard"), self.reject, secondary=True))
+        bar.addWidget(button(tr("Je souhaite être informé"), self.demander))
         v.addLayout(bar)
 
     def demander(self):
@@ -785,11 +821,11 @@ def proposer_nouveautes(parent):
 
 class DashboardPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Votre activité", "Tableau de bord", "Votre activité en F CFP", parent)
-        self.donation_button = button("Faire un don", self.donate, secondary=True)
+        super().__init__(tr("Votre activité"), tr(tr("Tableau de bord")), "Votre activité en " + regional.configuration()["devise"] + "", parent)
+        self.donation_button = button(tr("Faire un don"), self.donate, secondary=True)
         self.donation_button.setObjectName("donationButton")
         self.donation_button.setToolTip("Soutenir ska_987 sur PayPal — contribution facultative")
-        self.update_button = button("Mettre à jour", lambda: demander_verification(self), secondary=True)
+        self.update_button = button(tr("Mettre à jour"), lambda: demander_verification(self), secondary=True)
         links = QVBoxLayout()
         for widget in (self.donation_button, self.update_button):
             widget.setMinimumWidth(190)
@@ -797,16 +833,16 @@ class DashboardPage(Page):
             links.addWidget(widget)
         self.heading_row.addLayout(links)
         actions = QHBoxLayout()
-        actions.addWidget(button("Créer un devis", lambda: self.navigate.emit("devis")))
-        actions.addWidget(button("Ajouter une opération", lambda: self.navigate.emit("journal"), secondary=True))
-        actions.addWidget(button("Ajouter un client", lambda: self.navigate.emit("clients")))
+        actions.addWidget(button(tr("Créer un devis"), lambda: self.navigate.emit("devis")))
+        actions.addWidget(button(tr("Ajouter une opération"), lambda: self.navigate.emit("journal"), secondary=True))
+        actions.addWidget(button(tr("Ajouter un client"), lambda: self.navigate.emit("clients")))
         actions.addStretch()
         self.layout.addLayout(actions)
         metrics = QGridLayout()
-        self.m_recettes = MetricCard("Recettes enregistrées cette année")
-        self.m_depenses = MetricCard("Dépenses enregistrées")
-        self.m_restant = MetricCard("Reste à encaisser")
-        self.m_treso = MetricCard("Trésorerie suivie")
+        self.m_recettes = MetricCard(tr("Recettes enregistrées cette année"))
+        self.m_depenses = MetricCard(tr("Dépenses enregistrées"))
+        self.m_restant = MetricCard(tr("Reste à encaisser"))
+        self.m_treso = MetricCard(tr("Trésorerie suivie"))
         for i, w in enumerate([self.m_recettes, self.m_depenses, self.m_restant, self.m_treso]):
             metrics.addWidget(w, 0, i)
         self.layout.addLayout(metrics)
@@ -816,22 +852,32 @@ class DashboardPage(Page):
         self.layout.addWidget(self.alert)
         grid = QGridLayout()
         self.unpaid = QTableWidget()
-        configure_table(self.unpaid, ["Facture / client", "Reste dû", "Échéance"])
+        self.unpaid.doubleClicked.connect(self.open_invoice)
+        configure_table(self.unpaid, [tr("Facture / client"), tr("Reste dû"), tr(tr("Échéance"))])
         self.reminders = QTableWidget()
-        configure_table(self.reminders, ["Échéance", "Rappel"])
-        box1 = QGroupBox("Factures à encaisser")
-        l1 = QVBoxLayout(box1); l1.addWidget(self.unpaid);l1.addWidget(button("Préparer une relance",self.relance,secondary=True))
-        box2 = QGroupBox("Prochaines échéances")
+        configure_table(self.reminders, [tr("Échéance"), tr(tr("Rappel"))])
+        box1 = QGroupBox(tr("Factures à encaisser"))
+        l1 = QVBoxLayout(box1); l1.addWidget(self.unpaid);l1.addWidget(button(tr("Préparer une relance"),self.relance,secondary=True))
+        box2 = QGroupBox(tr("Prochaines échéances"))
         l2 = QVBoxLayout(box2); l2.addWidget(self.reminders)
         grid.addWidget(box1, 0, 0)
         grid.addWidget(box2, 0, 1)
         self.layout.addLayout(grid)
         self.quotes = QTableWidget()
-        configure_table(self.quotes, ["Devis", "Client", "Objet", "État"])
-        box3 = QGroupBox("Devis récents")
+        self.quotes.doubleClicked.connect(self.open_quote)
+        configure_table(self.quotes, [tr("Devis"), tr("Client"), tr("Objet"), tr("État")])
+        box3 = QGroupBox(tr("Devis récents"))
         l3 = QVBoxLayout(box3); l3.addWidget(self.quotes)
         self.layout.addWidget(box3)
         self.layout.addStretch()
+
+    def open_invoice(self):
+        ident = selected_id(self.unpaid)
+        if ident is not None: InvoiceDialog(ident, self).exec(); self.refresh()
+
+    def open_quote(self):
+        ident = selected_id(self.quotes)
+        if ident is not None: QuoteEditorDialog(ident, self).exec(); self.refresh()
 
     def donate(self):
         ouvrir_lien_officiel(self, paypal=True)
@@ -866,39 +912,39 @@ class DashboardPage(Page):
             treasury = e.get("solde_depart_centiemes", 0) + sum(
                 op["montant_centiemes"] * (1 if op["type_operation"] == "recette" else -1) for op in ops
             )
-        self.m_treso.value.setText(fcfp(treasury) if treasury is not None else "À initialiser")
+        self.m_treso.value.setText(fcfp(treasury) if treasury is not None else tr("À initialiser"))
         fill_table(self.unpaid, unpaid,unpaid_ids)
         reminders = g.liste("SELECT * FROM rappels WHERE fait=0 ORDER BY echeance LIMIT 8")
         fill_table(self.reminders, [[x["echeance"], x["titre"]] for x in reminders])
         quotes = db.lister_devis()[:6]
-        fill_table(self.quotes, [[f'#{x["id"]}', x["nom_client"], x["objet"], x["statut"]] for x in quotes])
+        fill_table(self.quotes, [[f'#{x["id"]}', x["nom_client"], x["objet"], x["statut"]] for x in quotes], [x["id"] for x in quotes])
         alerts = list(summary.get("alertes", []))
         fiscal_reminder = g.rappel_seuil_ca(current_year)
         if fiscal_reminder:
             alerts.append(fiscal_reminder)
         if not e.get("nom"):
-            alerts.insert(0, "Commencez par renseigner votre entreprise.")
+            alerts.insert(0, tr("Commencez par renseigner votre entreprise."))
         self.alert.setText("\n".join("• " + x for x in alerts))
         self.alert.setVisible(bool(alerts))
 
     def relance(self):
         ident=selected_id(self.unpaid)
-        if ident is None:show_info(self,"Sélectionnez une facture à relancer.");return
+        if ident is None:show_info(self,tr("Sélectionnez une facture à relancer."));return
         from interface_beta import relancer
         relancer(self,ident)
 
 
 class ClientsPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Répertoire", "Clients", "Coordonnées utilisées dans les devis et factures.", parent)
+        super().__init__(tr("Répertoire"), tr(tr("Clients")), tr(tr("Coordonnées utilisées dans les devis et factures.")), parent)
         bar = QHBoxLayout()
-        bar.addWidget(button("Ajouter un client", self.add))
-        bar.addWidget(button("Modifier", self.edit, secondary=True))
+        bar.addWidget(button(tr("Ajouter un client"), self.add))
+        bar.addWidget(button(tr("Modifier"), self.edit, secondary=True))
         bar.addStretch()
         self.layout.addLayout(bar)
-        self.recherche=QLineEdit();self.recherche.setPlaceholderText("Rechercher par nom ou numéro");self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
+        self.recherche=QLineEdit();self.recherche.setPlaceholderText(tr("Rechercher par nom ou numéro"));self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
         self.table = QTableWidget()
-        configure_table(self.table, ["Nom", "Téléphone", "E-mail", "Adresse"])
+        configure_table(self.table, [tr("Nom"), tr("Téléphone"), tr(tr("E-mail")), tr(tr("Adresse"))])
         self.table.doubleClicked.connect(self.edit)
         self.layout.addWidget(self.table)
 
@@ -928,21 +974,21 @@ class ClientsPage(Page):
 
 class ArticlesPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Catalogue", "Produits et prestations", "Prix et taux utilisés pour préremplir les devis.", parent)
+        super().__init__(tr("Catalogue"), tr("Produits et prestations"), tr("Prix et taux utilisés pour préremplir les devis."), parent)
         bar = QHBoxLayout()
-        bar.addWidget(button("Ajouter", self.add))
-        bar.addWidget(button("Modifier", self.edit, secondary=True))
-        bar.addWidget(button("Supprimer", self.delete, danger=True))
+        bar.addWidget(button(tr("Ajouter"), self.add))
+        bar.addWidget(button(tr("Modifier"), self.edit, secondary=True))
+        bar.addWidget(button(tr("Supprimer"), self.delete, danger=True))
         bar.addStretch()
         self.layout.addLayout(bar)
         self.table = QTableWidget()
-        configure_table(self.table, ["Référence", "Désignation", "Type", "Unité", "Achat", "Vente HT", "TVA %"])
+        configure_table(self.table, [tr("Référence"), tr(tr("Désignation")), tr(tr("Type")), tr(tr("Unité")), tr(tr("Achat")), tr(tr("Vente HT")), tr(tr("Taxe %"))])
         self.table.doubleClicked.connect(self.edit)
         self.layout.addWidget(self.table)
 
     def refresh(self):
         rows = db.lister_articles()
-        fill_table(self.table, [[x["reference"], x["designation"], "Produit" if x["type_article"] == "produit" else "Prestation", x["unite"], fcfp(x["prix_achat_centiemes"]), fcfp(x["prix_vente_centiemes"]), decimal_text(x["taxe_centiemes"])] for x in rows], [x["id"] for x in rows])
+        fill_table(self.table, [[x["reference"], x["designation"], tr("Produit") if x["type_article"] == "produit" else tr("Prestation"), x["unite"], fcfp(x["prix_achat_centiemes"]), fcfp(x["prix_vente_centiemes"]), decimal_text(x["taxe_centiemes"])] for x in rows], [x["id"] for x in rows])
 
     def add(self):
         d = ArticleDialog(parent=self)
@@ -961,7 +1007,7 @@ class ArticlesPage(Page):
     def delete(self):
         ident = selected_id(self.table)
         if ident is None: return
-        if confirm(self, "Supprimer cet élément du catalogue ?"):
+        if confirm(self, tr("Supprimer cet élément du catalogue ?")):
             try: db.supprimer_article(ident); self.refresh()
             except Exception as exc: show_error(self, exc)
 
@@ -972,7 +1018,10 @@ class QuoteEditorDialog(QDialog):
     def __init__(self, quote_id: int, parent=None):
         super().__init__(parent)
         self.quote_id = quote_id
-        self.setWindowTitle("Devis")
+        self._loading = True
+        self._ready = False
+        self._dirty = False
+        self.setWindowTitle(tr("Devis"))
         self.resize(1120, 790)
         outer = QVBoxLayout(self)
         self.scroll = QScrollArea()
@@ -985,7 +1034,8 @@ class QuoteEditorDialog(QDialog):
         self.status = QLabel()
         self.status.setObjectName("lead")
         root.addWidget(self.status)
-        header = QGroupBox("En-tête du devis")
+        self.save_state=QLabel();self.save_state.setWordWrap(True);root.addWidget(self.save_state)
+        header = QGroupBox(tr("En-tête du devis"))
         form = QGridLayout(header)
         self.client = QComboBox()
         self.clients = db.lister_clients()
@@ -994,74 +1044,105 @@ class QuoteEditorDialog(QDialog):
         self.objet = QLineEdit()
         self.validite = QSpinBox(); self.validite.setRange(1, 365)
         self.vente = QTextEdit(); self.reglement = QTextEdit(); self.mention = QTextEdit()
-        form.addWidget(QLabel("Client"), 0, 0); form.addWidget(self.client, 0, 1)
-        form.addWidget(QLabel("Date"), 0, 2); form.addWidget(self.date, 0, 3)
-        form.addWidget(QLabel("Objet"), 1, 0); form.addWidget(self.objet, 1, 1, 1, 3)
-        form.addWidget(QLabel("Validité (jours)"), 2, 0); form.addWidget(self.validite, 2, 1)
+        form.addWidget(QLabel(tr("Client")), 0, 0); form.addWidget(self.client, 0, 1)
+        form.addWidget(QLabel(tr("Date")), 0, 2); form.addWidget(self.date, 0, 3)
+        form.addWidget(QLabel(tr("Objet")), 1, 0); form.addWidget(self.objet, 1, 1, 1, 3)
+        form.addWidget(QLabel(tr("Validité (jours)")), 2, 0); form.addWidget(self.validite, 2, 1)
         root.addWidget(header)
-        self.terms_panel = QGroupBox("Textes du document · facultatifs")
+        self.terms_panel = QGroupBox(tr("Textes du document · facultatifs"))
         terms_form = QFormLayout(self.terms_panel)
-        for label, field in (("Conditions de vente", self.vente), ("Règlement", self.reglement), ("Mention", self.mention)):
+        for label, field in ((tr("Conditions de vente"), self.vente), (tr("Règlement"), self.reglement), (tr(tr("Mention")), self.mention)):
             field.setFixedHeight(85)
-            field.setPlaceholderText("Facultatif")
+            field.setPlaceholderText(tr("Facultatif"))
             terms_form.addRow(label, field)
-        self.terms_toggle = button("Conditions et mentions", secondary=True)
+        self.terms_toggle = button(tr("Conditions et mentions"), secondary=True)
         self.terms_toggle.setCheckable(True)
         self.terms_toggle.toggled.connect(self.terms_panel.setVisible)
         root.addWidget(self.terms_toggle)
         root.addWidget(self.terms_panel)
         self.terms_panel.hide()
         linebar = QHBoxLayout()
-        self.add_catalog_btn = button("Ajouter du catalogue", self.add_catalog)
-        self.add_free_btn = button("Ajouter une ligne libre", self.add_free, secondary=True)
-        self.edit_line_btn = button("Modifier la ligne", self.edit_line, secondary=True)
-        self.remove_line_btn = button("Retirer la ligne", self.remove_line, danger=True)
+        self.add_catalog_btn = button(tr("Ajouter du catalogue"), self.add_catalog)
+        self.add_free_btn = button(tr("Ajouter une ligne libre"), self.add_free, secondary=True)
+        self.edit_line_btn = button(tr("Modifier la ligne"), self.edit_line, secondary=True)
+        self.remove_line_btn = button(tr("Retirer la ligne"), self.remove_line, danger=True)
         for b in [self.add_catalog_btn, self.add_free_btn, self.edit_line_btn, self.remove_line_btn]: linebar.addWidget(b)
         linebar.addStretch()
         root.addLayout(linebar)
         self.lines = QTableWidget()
-        configure_table(self.lines, ["Désignation", "Quantité", "Prix HT", "TVA %", "Total HT", "Réf."])
+        configure_table(self.lines, [tr("Désignation"), tr(tr("Quantité")), tr(tr("Prix HT")), tr(tr("Taxe %")), tr(tr("Total HT")), tr(tr("Réf."))])
         self.lines.doubleClicked.connect(self.edit_line)
         root.addWidget(self.lines, 1)
         self.total = QLabel(); self.total.setWordWrap(True); self.total.setProperty("class", "metricValue"); self.total.setAlignment(Qt.AlignmentFlag.AlignRight)
         root.addWidget(self.total)
         actions = QGridLayout()
-        self.save_btn = button("Enregistrer le brouillon", self.save_header)
-        self.pdf_btn = button("PDF", self.export_pdf, secondary=True)
-        self.emit_btn = button("Émettre et figer", self.emit_quote)
-        self.accept_btn = button("Marquer accepté", lambda: self.decision("accepte"))
-        self.refuse_btn = button("Marquer refusé", lambda: self.decision("refuse"), danger=True)
-        self.invoice_btn = button("Créer la facture", self.create_invoice)
-        self.duplicate_btn = button("Dupliquer", self.duplicate, secondary=True)
-        close = button("Fermer", self.accept, secondary=True)
+        self.save_btn = button(tr("Enregistrer le brouillon"), self.save_header)
+        self.pdf_btn = button(tr("Aperçu PDF"), self.preview_pdf, secondary=True)
+        self.emit_btn = button(tr("Finaliser le devis"), self.emit_quote)
+        self.accept_btn = button(tr("Marquer accepté"), lambda: self.decision("accepte"))
+        self.refuse_btn = button(tr("Marquer refusé"), lambda: self.decision("refuse"), danger=True)
+        self.invoice_btn = button(tr("Créer la facture"), self.create_invoice)
+        self.duplicate_btn = button(tr("Dupliquer"), self.duplicate, secondary=True)
+        close = button(tr("Fermer"), self.accept, secondary=True)
         for i, b in enumerate([self.save_btn, self.pdf_btn, self.emit_btn, self.accept_btn, self.refuse_btn, self.invoice_btn, self.duplicate_btn]):
             actions.addWidget(b, i // 4, i % 4)
         outer.addWidget(close)
         root.addLayout(actions)
         self.refresh()
+        self._ready = True
+        self.auto_save = QTimer(self);self.auto_save.setSingleShot(True);self.auto_save.setInterval(650)
+        self.auto_save.timeout.connect(lambda:self.save_header(quiet=True,refresh=False))
+        for entry in (self.objet,):entry.textChanged.connect(self.edited)
+        self.date.entry.textChanged.connect(self.edited);self.client.currentIndexChanged.connect(self.edited);self.validite.valueChanged.connect(self.edited)
+        for entry in (self.vente,self.reglement,self.mention):entry.textChanged.connect(self.edited)
 
-    def refresh(self):
+    def edited(self,*_):
+        if self._loading:return
+        self._dirty=True;self.save_state.setText(tr("Enregistrement…"));self.auto_save.start()
+
+    def state(self):
+        return {'client_id':self.client.currentData(),'date':self.date.entry.text(),'objet':self.objet.text(),'validite':self.validite.value(),'vente':self.vente.toPlainText(),'reglement':self.reglement.toPlainText(),'mention':self.mention.toPlainText()}
+
+    def closeEvent(self,event):
+        if self._ready and self._dirty and not self.save_header(quiet=True,refresh=False):
+            event.ignore();return
+        event.accept()
+
+    def done(self,result):
+        if self._ready and self._dirty and not self.save_header(quiet=True,refresh=False):return
+        super().done(result)
+
+    def refresh(self,keep_header=False):
+        self._loading=True
         d = db.obtenir_devis(self.quote_id)
         if not d:
             self.reject(); return
         s = g.calculer(self.quote_id)
         self.status.setText(f'Devis {d.get("numero") or "brouillon #" + str(d["id"])} · {d["statut"]} · {d["nom_client"]}')
-        idx = self.client.findData(d["client_id"])
-        if idx >= 0: self.client.setCurrentIndex(idx)
-        self.date.setDate(qdate_from_iso(d["date_devis"]))
-        self.objet.setText(d["objet"])
-        self.validite.setValue(d.get("validite_jours", 30))
-        self.vente.setPlainText(d.get("conditions_vente", ""))
-        self.reglement.setPlainText(d.get("conditions_reglement", ""))
-        self.mention.setPlainText(d.get("mention_complementaire", ""))
+        if not keep_header:
+            idx = self.client.findData(d["client_id"])
+            if idx >= 0: self.client.setCurrentIndex(idx)
+            self.date.setDate(qdate_from_iso(d["date_devis"]))
+            self.objet.setText(d["objet"])
+            self.validite.setValue(d.get("validite_jours", 30))
+            self.vente.setPlainText(d.get("conditions_vente", ""))
+            self.reglement.setPlainText(d.get("conditions_reglement", ""))
+            self.mention.setPlainText(d.get("mention_complementaire", ""))
+            pending=g.lire_brouillon_ui(self.quote_id) if d['statut']=='brouillon' else None
+            if pending:
+                self.client.setCurrentIndex(max(0,self.client.findData(pending['client_id'])))
+                self.date.entry.setText(pending['date']);self.objet.setText(pending['objet']);self.validite.setValue(pending['validite'])
+                self.vente.setPlainText(pending['vente']);self.reglement.setPlainText(pending['reglement']);self.mention.setPlainText(pending['mention'])
+                self.save_state.setText(tr("Brouillon enregistré · vérifiez les champs incomplets."))
+            else:self.save_state.setText(tr("Brouillon enregistré automatiquement.") if d['statut']=='brouillon' else tr(tr("Document finalisé.")))
         lines = s["lignes"]
         fill_table(self.lines, [[x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["prix_unitaire_centiemes"]), decimal_text(x["taxe_centiemes"]), fcfp(x["ht"]), x["reference"]] for x in lines], [x["id"] for x in lines])
         regime = s.get("regime")
         total = f'Total HT : {fcfp(s["ht"])}'
         if regime:
-            total += f'   ·   TVA : {fcfp(s["tva"])}   ·   Total : {fcfp(s["ttc"])}'
+            total += f'   ·   Taxe : {fcfp(s["tva"])}   ·   Total : {fcfp(s["ttc"])}'
         else:
-            total += f'   ·   Total : {fcfp(s["ttc"])} · Sans TVA calculée'
+            total += f'   ·   Total : {fcfp(s["ttc"])} · Sans Taxe calculée'
         self.total.setText(total)
         draft = d["statut"] == "brouillon"
         sent = d["statut"] == "envoye"
@@ -1072,33 +1153,60 @@ class QuoteEditorDialog(QDialog):
         self.accept_btn.setVisible(sent); self.refuse_btn.setVisible(sent)
         self.invoice_btn.setVisible(accepted)
         self.changed.emit()
+        self._loading=False
 
-    def save_header(self):
+    def save_header(self,quiet=False,refresh=True):
+        if hasattr(self,'auto_save'):self.auto_save.stop()
+        if db.obtenir_devis(self.quote_id)['statut']!='brouillon':return True
         try:
-            g.modifier_devis(self.quote_id, self.client.currentData(), iso_date(self.date), self.objet.text(), self.validite.value(), self.vente.toPlainText(), self.reglement.toPlainText(), self.mention.toPlainText())
-            self.refresh()
-            return True
+            g.enregistrer_brouillon_ui(self.quote_id,self.state())
+            self._dirty=False
         except Exception as exc:
-            show_error(self, exc)
+            self.save_state.setText(tr("Enregistrement impossible. Vos modifications restent dans cette fenêtre."))
+            if not quiet:show_error(self,exc)
+            return False
+        try:
+            g.modifier_devis(self.quote_id,self.client.currentData(),iso_date(self.date),self.objet.text(),self.validite.value(),self.vente.toPlainText(),self.reglement.toPlainText(),self.mention.toPlainText())
+            with g.connexion() as c:c.execute('DELETE FROM brouillons_ui WHERE devis_id=?',(self.quote_id,))
+            self.save_state.setText(tr("Brouillon enregistré automatiquement."))
+            if refresh:self.refresh(keep_header=True)
+            return True
+        except ValueError as exc:
+            self.save_state.setText(tr("Brouillon enregistré · "+str(exc)))
+            if not quiet:show_error(self,exc)
+            return quiet
+        except Exception as exc:
+            if not quiet:show_error(self,exc)
             return False
 
+    def preview_pdf(self):
+        if not self.save_header(refresh=False):return
+        try:
+            from apercu_pdf import ouvrir
+            s=g.calculer(self.quote_id);d=db.obtenir_devis(self.quote_id)
+            ouvrir(self,generer(s,not bool(d.get('instantane'))),(d.get('numero') or 'devis-brouillon')+'.pdf')
+        except Exception as exc:show_error(self,exc)
+
     def add_catalog(self):
+        if not self.save_header(quiet=True,refresh=False):return
         d = CatalogLineDialog(self)
         if d.exec():
             article, qty = d.values()
             if not article: return
             try:
-                db.ajouter_ligne_devis(self.quote_id, article["designation"], article["unite"], qty, decimal_text(article["prix_vente_centiemes"]), decimal_text(article["taxe_centiemes"]), article["reference"], False, article["type_article"])
-                self.refresh()
+                db.ajouter_ligne_devis(self.quote_id, article["designation"], article["unite"], qty, money_text(article["prix_vente_centiemes"]), decimal_text(article["taxe_centiemes"]), article["reference"], False, article["type_article"])
+                self.refresh(keep_header=True)
             except Exception as exc: show_error(self, exc)
 
     def add_free(self):
+        if not self.save_header(quiet=True,refresh=False):return
         d = QuoteLineDialog(parent=self)
         if d.exec():
-            try: db.ajouter_ligne_devis(self.quote_id, *d.values()); self.refresh()
+            try: db.ajouter_ligne_devis(self.quote_id, *d.values()); self.refresh(keep_header=True)
             except Exception as exc: show_error(self, exc)
 
     def edit_line(self):
+        if not self.save_header(quiet=True,refresh=False):return
         line_id = selected_id(self.lines)
         if line_id is None: return
         data = db.obtenir_ligne_devis(self.quote_id, line_id)
@@ -1107,18 +1215,19 @@ class QuoteEditorDialog(QDialog):
             vals = d.values()
             try:
                 db.modifier_ligne_devis(self.quote_id, line_id, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5])
-                self.refresh()
+                self.refresh(keep_header=True)
             except Exception as exc: show_error(self, exc)
 
     def remove_line(self):
+        if not self.save_header(quiet=True,refresh=False):return
         line_id = selected_id(self.lines)
         if line_id is None: return
-        if confirm(self, "Retirer cette ligne du devis ?"):
-            try: db.supprimer_ligne_devis(self.quote_id, line_id); self.refresh()
+        if confirm(self, tr("Retirer cette ligne du devis ?")):
+            try: db.supprimer_ligne_devis(self.quote_id, line_id); self.refresh(keep_header=True)
             except Exception as exc: show_error(self, exc)
 
     def emit_quote(self):
-        if not confirm(self, "Émettre ce devis ? Un numéro sera attribué et cette version sera figée."):
+        if not confirm(self, tr("Émettre ce devis ? Un numéro sera attribué et cette version sera figée.")):
             return
         try:
             if not self.save_header():
@@ -1133,6 +1242,7 @@ class QuoteEditorDialog(QDialog):
         except Exception as exc: show_error(self, exc)
 
     def export_pdf(self):
+        if not self.save_header(refresh=False):return
         try:
             s = g.calculer(self.quote_id)
             d = db.obtenir_devis(self.quote_id)
@@ -1141,6 +1251,7 @@ class QuoteEditorDialog(QDialog):
         except Exception as exc: show_error(self, exc)
 
     def duplicate(self):
+        if not self.save_header(refresh=False):return
         try:
             new_id = g.dupliquer_devis(self.quote_id)
             show_info(self, f"Copie créée : devis #{new_id}")
@@ -1148,11 +1259,11 @@ class QuoteEditorDialog(QDialog):
         except Exception as exc: show_error(self, exc)
 
     def create_invoice(self):
-        d = QDialog(self); d.setWindowTitle("Créer la facture")
+        d = QDialog(self); d.setWindowTitle(tr("Créer la facture"))
         layout = QFormLayout(d)
         invoice_date = make_date(g.aujourd_hui().isoformat())
         due = make_date(g.aujourd_hui().isoformat())
-        layout.addRow("Date de facture", invoice_date); layout.addRow("Échéance", due)
+        layout.addRow(tr("Date de facture"), invoice_date); layout.addRow(tr("Échéance"), due)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(d.accept); bb.rejected.connect(d.reject); layout.addRow(bb)
         if d.exec():
@@ -1165,13 +1276,13 @@ class QuoteEditorDialog(QDialog):
 
 class QuotesPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Ventes", "Devis", "Préparez vos devis, puis créez vos factures.", parent)
+        super().__init__(tr("Ventes"), tr("Devis"), tr("Préparez vos devis, puis créez vos factures."), parent)
         bar = QHBoxLayout()
-        bar.addWidget(button("Créer un devis", self.add))
-        bar.addWidget(button("Ouvrir", self.open, secondary=True))
+        bar.addWidget(button(tr("Créer un devis"), self.add))
+        bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True))
         bar.addStretch(); self.layout.addLayout(bar)
-        self.recherche=QLineEdit();self.recherche.setPlaceholderText("Rechercher par nom ou numéro");self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
-        self.table = QTableWidget(); configure_table(self.table, ["N°", "Date", "Client", "Objet", "État"])
+        self.recherche=QLineEdit();self.recherche.setPlaceholderText(tr("Rechercher par nom ou numéro"));self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
+        self.table = QTableWidget(); configure_table(self.table, [tr("N°"), tr(tr("Date")), tr(tr("Client")), tr(tr("Objet")), tr(tr("État"))])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)
 
     def refresh(self):
@@ -1188,7 +1299,7 @@ class QuotesPage(Page):
 
     def add(self):
         if not db.lister_clients():
-            show_info(self, "Ajoutez d’abord un client."); return
+            show_info(self, tr("Ajoutez d’abord un client.")); return
         d = QuoteCreateDialog(self)
         if d.exec():
             try:
@@ -1208,7 +1319,7 @@ class InvoiceDialog(QDialog):
         super().__init__(parent)
         self.document_id = document_id
         self.resize(980, 720)
-        self.setWindowTitle("Facture / avoir")
+        self.setWindowTitle(tr("Facture / avoir"))
         outer = QVBoxLayout(self)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -1219,16 +1330,16 @@ class InvoiceDialog(QDialog):
         outer.addWidget(self.scroll)
         self.heading = QLabel(); self.heading.setObjectName("title"); root.addWidget(self.heading)
         self.metrics = QLabel(); self.metrics.setObjectName("lead"); root.addWidget(self.metrics)
-        self.lines = QTableWidget(); configure_table(self.lines, ["Désignation", "Quantité", "Total HT"]); root.addWidget(self.lines, 1)
-        self.payments = QTableWidget(); configure_table(self.payments, ["Date", "Montant", "Moyen", "Référence"])
-        box = QGroupBox("Paiements enregistrés"); boxl = QVBoxLayout(box); boxl.addWidget(self.payments); root.addWidget(box)
+        self.lines = QTableWidget(); configure_table(self.lines, [tr("Désignation"), tr(tr("Quantité")), tr(tr("Total HT"))]); root.addWidget(self.lines, 1)
+        self.payments = QTableWidget(); configure_table(self.payments, [tr("Date"), tr("Montant"), tr("Moyen"), tr("Référence")])
+        box = QGroupBox(tr("Paiements enregistrés")); boxl = QVBoxLayout(box); boxl.addWidget(self.payments); root.addWidget(box)
         bar = QHBoxLayout()
-        self.pdf_btn = button("PDF", self.export_pdf, secondary=True)
-        self.pay_btn = button("Enregistrer un paiement", self.pay)
-        self.credit_btn = button("Émettre un avoir", self.credit, danger=True)
-        self.refund_btn = button("Enregistrer un remboursement", self.refund, secondary=True)
+        self.pdf_btn = button(tr("Aperçu PDF"), self.preview_pdf, secondary=True)
+        self.pay_btn = button(tr("Enregistrer un paiement"), self.pay)
+        self.credit_btn = button(tr("Émettre un avoir"), self.credit, danger=True)
+        self.refund_btn = button(tr("Enregistrer un remboursement"), self.refund, secondary=True)
         for b in [self.pdf_btn, self.pay_btn, self.credit_btn, self.refund_btn]: bar.addWidget(b)
-        bar.addStretch(); bar.addWidget(button("Fermer", self.accept, secondary=True)); root.addLayout(bar)
+        bar.addStretch(); bar.addWidget(button(tr("Fermer"), self.accept, secondary=True)); root.addLayout(bar)
         self.refresh()
 
     def refresh(self):
@@ -1255,7 +1366,7 @@ class InvoiceDialog(QDialog):
         dlg = PaymentDialog(False, self)
         if dlg.exec():
             try:
-                day, amount, mode, ref = dlg.values(); g.payer(self.document_id, day, amount, mode, ref); QApplication.instance().fenetre_principale.gestion_comptes.tracer("Encaissement client", str(self.document_id)); self.refresh()
+                day, amount, mode, ref = dlg.values(); g.payer(self.document_id, day, amount, mode, ref); QApplication.instance().fenetre_principale.gestion_comptes.tracer(tr("Encaissement client"), str(self.document_id)); self.refresh()
             except Exception as exc: show_error(self, exc)
 
     def credit(self):
@@ -1280,13 +1391,13 @@ class InvoiceDialog(QDialog):
 
 class InvoicesPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Documents", "Factures et encaissements", "Retrouvez une facture pour enregistrer un paiement.", parent)
+        super().__init__(tr("Documents"), tr("Factures et encaissements"), tr("Retrouvez une facture pour enregistrer un paiement."), parent)
         self.recherche = QLineEdit()
-        self.recherche.setPlaceholderText("Numéro exact de facture")
+        self.recherche.setPlaceholderText(tr("Numéro exact de facture"))
         self.recherche.returnPressed.connect(self.refresh)
-        bar = QHBoxLayout(); bar.addWidget(self.recherche); bar.addWidget(button("Rechercher", self.refresh)); bar.addWidget(button("Ouvrir", self.open, secondary=True))
+        bar = QHBoxLayout(); bar.addWidget(self.recherche); bar.addWidget(button(tr("Rechercher"), self.refresh)); bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True))
         self.layout.addLayout(bar)
-        self.table = QTableWidget(); configure_table(self.table, ["Numéro", "Date", "Client", "Total", "Réglé", "Reste"])
+        self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr(tr("Date")), tr(tr("Client")), tr(tr("Total")), tr(tr("Réglé")), tr(tr("Reste"))])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)
 
     def refresh(self):
@@ -1314,14 +1425,14 @@ class InvoicesPage(Page):
 
 class JournalPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Trésorerie", "Recettes et dépenses", "Notez vos recettes et vos dépenses.", parent)
+        super().__init__(tr("Trésorerie"), tr("Recettes et dépenses"), tr("Notez vos recettes et vos dépenses."), parent)
         top=QHBoxLayout(); self.year=QSpinBox(); self.year.setRange(1900, 9999); self.year.setValue(g.aujourd_hui().year); self.year.valueChanged.connect(self.refresh)
-        top.addWidget(QLabel("Année"));top.addWidget(self.year);top.addWidget(button("Ajouter une opération",self.add));top.addWidget(button("Modifier",self.edit,secondary=True));top.addWidget(button("Supprimer",self.delete,danger=True));top.addWidget(button("Exporter CSV",self.exporter_csv,secondary=True));top.addStretch();self.layout.addLayout(top)
-        metrics=QHBoxLayout();self.rec=MetricCard("Recettes");self.dep=MetricCard("Dépenses");self.diff=MetricCard("Différence")
+        top.addWidget(QLabel(tr("Année")));top.addWidget(self.year);top.addWidget(button(tr(tr("Ajouter une opération")),self.add));top.addWidget(button(tr(tr("Modifier")),self.edit,secondary=True));top.addWidget(button(tr(tr("Supprimer")),self.delete,danger=True));top.addWidget(button(tr("Exporter CSV"),self.exporter_csv,secondary=True));top.addStretch();self.layout.addLayout(top)
+        metrics=QHBoxLayout();self.rec=MetricCard(tr("Recettes"));self.dep=MetricCard(tr("Dépenses"));self.diff=MetricCard(tr("Différence"))
         for m in [self.rec,self.dep,self.diff]:metrics.addWidget(m)
         self.layout.addLayout(metrics)
         self.alert=QLabel();self.alert.setWordWrap(True);self.layout.addWidget(self.alert)
-        self.table=QTableWidget();configure_table(self.table,["Date","Libellé","Type","Montant"]);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
+        self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr(tr("Type")),tr("Montant")]);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
 
     def refresh(self,*_):
         year=self.year.value(); summary=db.obtenir_resume_annuel(year);self.rec.value.setText(fcfp(summary["recettes"]));self.dep.value.setText(fcfp(summary["depenses"]));self.diff.value.setText(fcfp(summary["difference"]));self.alert.setText("\n".join("• "+a for a in summary.get("alertes",[])))
@@ -1349,25 +1460,25 @@ class JournalPage(Page):
         ident=selected_id(self.table)
         if ident is None:return
         if self._protected(ident):show_info(self,"Cette opération provient d’un paiement ou remboursement de facture et ne peut pas être supprimée ici.");return
-        if confirm(self,"Supprimer cette opération ?"):
+        if confirm(self,tr("Supprimer cette opération ?")):
             try:db.supprimer_operation(ident);self.refresh()
             except Exception as exc:show_error(self,exc)
 
 
     def exporter_csv(self):
         if not exiger_admin(self):return
-        fichier,_=QFileDialog.getSaveFileName(self,'Export pour le comptable',f'Recettes-depenses-{self.year.value()}.csv','CSV (*.csv)')
+        fichier,_=QFileDialog.getSaveFileName(self,tr('Export pour le comptable'),f'Recettes-depenses-{self.year.value()}.csv','CSV (*.csv)')
         if not fichier:return
         try:self.window().beta.exporter_csv(self.year.value(),fichier);show_info(self,'Export enregistré. Ce fichier contient vos opérations en clair : transmettez-le à votre comptable par un moyen privé.')
         except Exception as e:show_error(self,e)
 
 class StockPage(Page):
     def __init__(self,parent=None):
-        super().__init__("Inventaire","Stock","Suivez les quantités de vos produits.",parent)
-        bar=QHBoxLayout();bar.addWidget(button("Nouveau mouvement",self.move));bar.addStretch();self.layout.addLayout(bar)
-        self.table=QTableWidget();configure_table(self.table,["Référence","Produit","Unité","Stock"]);self.layout.addWidget(self.table)
-        self.movements=QTableWidget();configure_table(self.movements,["Date","Produit","Quantité","Motif"])
-        box=QGroupBox("Mouvements récents");bl=QVBoxLayout(box);bl.addWidget(self.movements);self.layout.addWidget(box)
+        super().__init__(tr("Inventaire"),tr("Stock"),tr("Suivez les quantités de vos produits."),parent)
+        bar=QHBoxLayout();bar.addWidget(button(tr("Nouveau mouvement"),self.move));bar.addStretch();self.layout.addLayout(bar)
+        self.table=QTableWidget();configure_table(self.table,[tr("Référence"),tr(tr("Produit")),tr(tr("Unité")),tr(tr("Stock"))]);self.layout.addWidget(self.table)
+        self.movements=QTableWidget();configure_table(self.movements,[tr("Date"),tr("Produit"),tr("Quantité"),tr(tr("Motif"))])
+        box=QGroupBox(tr("Mouvements récents"));bl=QVBoxLayout(box);bl.addWidget(self.movements);self.layout.addWidget(box)
 
     def refresh(self):
         rows=g.stock();fill_table(self.table,[[x["reference"],x["designation"],x["unite"],decimal_text(x["stock"])] for x in rows],[x["id"] for x in rows])
@@ -1375,7 +1486,7 @@ class StockPage(Page):
         fill_table(self.movements,[[x["date_mouvement"],x["designation"],decimal_text(x["quantite_centiemes"]),x["motif"]] for x in mov])
 
     def move(self):
-        if not g.stock():show_info(self,"Ajoutez d’abord un produit au catalogue.");return
+        if not g.stock():show_info(self,tr("Ajoutez d’abord un produit au catalogue."));return
         d=StockDialog(self)
         if d.exec():
             try:g.bouger_stock(*d.values());self.refresh()
@@ -1384,12 +1495,12 @@ class StockPage(Page):
 
 class RemindersPage(Page):
     def __init__(self,parent=None):
-        super().__init__("Organisation","Échéances","Retrouvez vos prochaines dates importantes.",parent)
-        bar=QHBoxLayout();bar.addWidget(button("Ajouter",self.add));bar.addWidget(button("Basculer fait / à faire",self.toggle,secondary=True));bar.addWidget(button("Importer TVA 2026",self.import_2026,secondary=True));bar.addStretch();self.layout.addLayout(bar)
-        self.table=QTableWidget();configure_table(self.table,["Échéance","Titre","État","Source"]);self.layout.addWidget(self.table)
+        super().__init__(tr("Organisation"),tr("Échéances"),tr("Retrouvez vos prochaines dates importantes."),parent)
+        bar=QHBoxLayout();bar.addWidget(button(tr("Ajouter"),self.add));bar.addWidget(button(tr("Basculer fait / à faire"),self.toggle,secondary=True));self.import_local=button("Importer Taxe 2026 · Polynésie",self.import_2026,secondary=True);self.import_local.setVisible(regional.configuration()["pays"]=="PF");bar.addWidget(self.import_local);bar.addStretch();self.layout.addLayout(bar)
+        self.table=QTableWidget();configure_table(self.table,[tr("Échéance"),tr("Titre"),tr(tr("État")),tr("Source")]);self.layout.addWidget(self.table)
 
     def refresh(self):
-        rows=g.liste('SELECT * FROM rappels ORDER BY fait,echeance');fill_table(self.table,[[x["echeance"],x["titre"],"Fait" if x["fait"] else "À faire",x["source"]] for x in rows],[x["id"] for x in rows])
+        rows=g.liste('SELECT * FROM rappels ORDER BY fait,echeance');fill_table(self.table,[[x["echeance"],x["titre"],tr("Fait") if x["fait"] else tr("À faire"),x["source"]] for x in rows],[x["id"] for x in rows])
 
     def add(self):
         d=ReminderDialog(self)
@@ -1411,64 +1522,87 @@ class RemindersPage(Page):
         except Exception as exc:show_error(self,exc)
 
     def import_2026(self):
+        if regional.configuration()["pays"] != "PF":return
         e=db.obtenir_entreprise();period=e.get('periodicite_tva','')
-        if not period:show_info(self,"Choisissez d’abord la périodicité TVA dans Réglages.");return
+        if not period:show_info(self,"Choisissez d’abord la périodicité Taxe dans Réglages.");return
         dates=['01-15','02-16','03-16','04-15','05-15','06-15','07-15','08-17','09-15','10-15','11-16','12-15']
         try:
             with g.connexion() as c:
                 for i,day in enumerate(dates,1):
                     if period=='trimestrielle' and i not in (1,4,7,10):continue
-                    c.execute('INSERT OR IGNORE INTO rappels(titre,echeance,source) VALUES(?,?,?)',(f'TVA {period} — échéance 2026','2026-'+day,'https://www.service-public.pf/dicp/calendrier-fiscal-polynesie-2026/'))
+                    c.execute('INSERT OR IGNORE INTO rappels(titre,echeance,source) VALUES(?,?,?)',(f'Taxe {period} — échéance 2026','2026-'+day,'https://www.service-public.pf/dicp/calendrier-fiscal-polynesie-2026/'))
             self.refresh()
         except Exception as exc:show_error(self,exc)
 
 
 class CompanyPage(Page):
     def __init__(self,parent=None):
-        super().__init__("Configuration","Mon entreprise","Identité reprise sur vos documents.",parent)
-        card=QGroupBox("Coordonnées")
-        form=QFormLayout(card)
+        super().__init__(tr("Identité"),tr(tr("Mon entreprise")),tr("Identité et formats utilisés dans vos documents."),parent)
+        card=QGroupBox(tr("Coordonnées"));form=QFormLayout(card)
         self.nom=QLineEdit();self.responsable=QLineEdit();self.tel=QLineEdit();self.email=QLineEdit();self.adresse=QTextEdit();self.tahiti=QLineEdit();self.rcs=QLineEdit()
-        for label,w in [("Nom de l’entreprise *",self.nom),("Responsable",self.responsable),("Téléphone",self.tel),("E-mail",self.email),("Adresse",self.adresse),("Numéro TAHITI",self.tahiti),("Numéro RCS",self.rcs)]:form.addRow(label,w)
-        form.addRow("Monnaie",QLabel("F CFP (XPF)"));self.layout.addWidget(card)
-        self.layout.addWidget(button("Enregistrer les coordonnées",self.save))
-        box=QGroupBox("Début d’activité");fl=QFormLayout(box);self.start=make_date();fl.addRow("Date",self.start);self.layout.addWidget(box);self.layout.addWidget(button("Enregistrer la date de début",self.save_start,secondary=True));self.layout.addStretch()
+        for label,w in [(tr("Nom de l’entreprise *"),self.nom),(tr(tr("Responsable")),self.responsable),(tr(tr("Téléphone")),self.tel),(tr(tr("E-mail")),self.email),(tr(tr("Adresse")),self.adresse),(tr(tr("Identifiant professionnel (facultatif)")),self.tahiti),(tr(tr("Registre / autre identifiant (facultatif)")),self.rcs)]:form.addRow(label,w)
+        self.layout.addWidget(card)
+        formats=QGroupBox(tr("Pays et formats"));f=QFormLayout(formats)
+        self.pays=QComboBox();self.pays.addItem(tr("Profil général · pays non renseigné"), "")
+        countries=[]
+        for country in QLocale.Country:
+            code=QLocale.territoryToCode(country)
+            if len(code)==2:countries.append((QLocale.territoryToString(country),code))
+        for name,code in sorted(set(countries)):self.pays.addItem(name+' · '+code,code)
+        self.devise=QLineEdit();self.devise.setMaxLength(3);self.devise.setPlaceholderText("EUR, USD, XPF…")
+        self.precision=QSpinBox();self.precision.setRange(0,4)
+        self.langue=QComboBox();self.langue.addItem("Français",'fr');self.langue.addItem("English",'en')
+        self.format_date=QComboBox()
+        for key,label in regional.FORMATS.items():self.format_date.addItem(label,key)
+        self.nom_taxe=QLineEdit();self.mention_exoneree=QLineEdit();self.libelle_identifiant=QLineEdit()
+        for label,w in [(tr("Pays"),self.pays),(tr("Devise · code de trois lettres"),self.devise),(tr(tr("Décimales des montants")),self.precision),(tr(tr("Langue")),self.langue),(tr(tr("Format des dates")),self.format_date),(tr(tr("Nom de la taxe")),self.nom_taxe),(tr(tr("Mention sans taxe (facultatif)")),self.mention_exoneree),(tr(tr("Libellé de l’identifiant")),self.libelle_identifiant)]:f.addRow(label,w)
+        note=QLabel(tr("Choisissez la devise et sa précision avant de saisir vos premiers montants. Les taxes sont définies par vos choix ; les rappels locaux sont informatifs."));note.setWordWrap(True);f.addRow(note)
+        self.layout.addWidget(formats);self.layout.addWidget(button(tr("Enregistrer les coordonnées et formats"),self.save))
+        self.saved=QLabel();self.saved.setWordWrap(True);self.layout.addWidget(self.saved)
+        box=QGroupBox(tr("Début d’activité (facultatif)"));fl=QFormLayout(box);self.start=DateInput(optional=True);fl.addRow(tr(tr("Date")),self.start);self.layout.addWidget(box);self.layout.addWidget(button(tr(tr("Enregistrer la date de début")),self.save_start,secondary=True));self.layout.addStretch()
 
     def refresh(self):
-        e=db.obtenir_entreprise() or {}
+        e=db.obtenir_entreprise() or {};cfg=regional.configuration(e)
         self.nom.setText(e.get('nom',''));self.responsable.setText(e.get('responsable',''));self.tel.setText(e.get('telephone',''));self.email.setText(e.get('email',''));self.adresse.setPlainText(e.get('adresse',''));self.tahiti.setText(e.get('numero_tahiti',''));self.rcs.setText(e.get('numero_rcs',''))
-        self.start.setDate(qdate_from_iso(e.get('date_debut_activite')))
+        self.pays.setCurrentIndex(max(0,self.pays.findData(cfg['pays'])));self.devise.setText(cfg['devise']);self.precision.setValue(cfg['decimales']);self.langue.setCurrentIndex(max(0,self.langue.findData(cfg['langue'])));self.format_date.setCurrentIndex(max(0,self.format_date.findData(cfg['format_date'])))
+        self.nom_taxe.setText(cfg['nom_taxe']);self.mention_exoneree.setText(cfg['mention_sans_taxe']);self.libelle_identifiant.setText(cfg['libelle_identifiant'])
+        if e.get('date_debut_activite'):self.start.setDate(qdate_from_iso(e['date_debut_activite']))
+        else:self.start.clear()
 
     def save(self):
-        try:db.modifier_entreprise(self.nom.text(),self.responsable.text(),self.tel.text(),self.email.text(),self.adresse.toPlainText(),self.tahiti.text(),self.rcs.text());show_info(self,"Coordonnées enregistrées.")
+        try:
+            g.regler_region(self.pays.currentData(),self.devise.text(),self.precision.value(),self.format_date.currentData(),self.langue.currentData(),self.nom_taxe.text(),self.mention_exoneree.text(),self.libelle_identifiant.text())
+            db.modifier_entreprise(self.nom.text(),self.responsable.text(),self.tel.text(),self.email.text(),self.adresse.toPlainText(),self.tahiti.text(),self.rcs.text())
+            QSettings().setValue("langue",self.langue.currentData())
+            self.saved.setText(tr("Enregistré. Les changements de langue et de format seront appliqués à la prochaine ouverture."))
         except Exception as exc:show_error(self,exc)
 
     def save_start(self):
-        try:db.enregistrer_debut_activite(iso_date(self.start));show_info(self,"Date de début enregistrée.")
+        try:db.enregistrer_debut_activite(iso_date(self.start));self.saved.setText(tr("Date de début enregistrée."))
         except Exception as exc:show_error(self,exc)
 
 
 class RepriseMonthDialog(FormDialog):
     def __init__(self,year,month,data=None,parent=None):
-        super().__init__(f"Reprise · {MOIS[month-1]} {year}",parent);data=data or {};self.rec=QLineEdit(decimal_text(data.get('recettes_centiemes')));self.dep=QLineEdit(decimal_text(data.get('depenses_centiemes')));self.checked=QCheckBox("Montants vérifiés");self.checked.setChecked(bool(data.get('verifie')));self.form.addRow("Recettes · F CFP",self.rec);self.form.addRow("Dépenses · F CFP",self.dep);self.form.addRow("",self.checked)
+        super().__init__(f"Reprise · {MOIS[month-1]} {year}",parent);data=data or {};self.rec=QLineEdit(money_text(data.get('recettes_centiemes')));self.dep=QLineEdit(money_text(data.get('depenses_centiemes')));self.checked=QCheckBox(tr(tr("Montants vérifiés")));self.checked.setChecked(bool(data.get('verifie')));self.form.addRow("Recettes · " + regional.configuration()["devise"] + "",self.rec);self.form.addRow("Dépenses · " + regional.configuration()["devise"] + "",self.dep);self.form.addRow("",self.checked)
     def values(self):return self.rec.text(),self.dep.text(),self.checked.isChecked()
 
 
 class RecoveryPage(Page):
     def __init__(self,parent=None):
-        super().__init__("Historique","Reprise de données","Ajoutez les montants des mois précédents une seule fois.",parent)
-        top=QHBoxLayout();self.year=QSpinBox();self.year.setRange(1900,9999);self.year.setValue(g.aujourd_hui().year);self.year.valueChanged.connect(self.refresh);top.addWidget(QLabel("Année"));top.addWidget(self.year);top.addStretch();self.layout.addLayout(top)
-        settings=QGroupBox("Période et situation antérieure");f=QFormLayout(settings);self.end=make_date();self.ca_n1=QLineEdit();f.addRow("Date de fin de reprise",self.end);f.addRow("CA année N−1 · F CFP",self.ca_n1);self.layout.addWidget(settings)
-        buttons=QHBoxLayout();buttons.addWidget(button("Enregistrer la période",self.save_end));buttons.addWidget(button("Enregistrer CA N−1",self.save_ca,secondary=True));buttons.addWidget(button("TVA et CA",lambda:self.navigate.emit("fiscalite"),secondary=True));buttons.addStretch();self.layout.addLayout(buttons)
+        super().__init__(tr("Historique"),tr("Reprise de données"),tr("Ajoutez les montants des mois précédents une seule fois."),parent)
+        top=QHBoxLayout();self.year=QSpinBox();self.year.setRange(1900,9999);self.year.setValue(g.aujourd_hui().year);self.year.valueChanged.connect(self.refresh);top.addWidget(QLabel(tr("Année")));top.addWidget(self.year);top.addStretch();self.layout.addLayout(top)
+        settings=QGroupBox(tr("Période et situation antérieure"));f=QFormLayout(settings);self.end=make_date();self.ca_n1=QLineEdit();f.addRow(tr(tr("Date de fin de reprise")),self.end);f.addRow("CA année N−1 · " + regional.configuration()["devise"] + "",self.ca_n1);self.layout.addWidget(settings)
+        buttons=QHBoxLayout();buttons.addWidget(button(tr("Enregistrer la période"),self.save_end));buttons.addWidget(button(tr(tr("Enregistrer CA N−1")),self.save_ca,secondary=True));buttons.addWidget(button(tr(tr("Taxe et CA")),lambda:self.navigate.emit("fiscalite"),secondary=True));buttons.addStretch();self.layout.addLayout(buttons)
         self.status=QLabel();self.status.setWordWrap(True);self.layout.addWidget(self.status)
-        self.table=QTableWidget();configure_table(self.table,["Mois","Recettes","Dépenses","Vérifié"]);self.table.doubleClicked.connect(self.edit_month);self.layout.addWidget(self.table)
-        self.layout.addWidget(QLabel("Double-cliquez un mois pour saisir ou corriger ses montants."))
+        self.table=QTableWidget();configure_table(self.table,[tr("Mois"),tr("Recettes"),tr("Dépenses"),tr(tr("Vérifié"))]);self.table.doubleClicked.connect(self.edit_month);self.layout.addWidget(self.table)
+        self.layout.addWidget(QLabel(tr("Double-cliquez un mois pour saisir ou corriger ses montants.")))
 
     def refresh(self,*_):
-        year=self.year.value();f=db.obtenir_fiscalite_annuelle(year) or {};self.end.setDate(qdate_from_iso(f.get('date_fin_reprise')));self.ca_n1.setText(decimal_text(f.get('ca_n1_centiemes')))
+        year=self.year.value();f=db.obtenir_fiscalite_annuelle(year) or {};self.end.setDate(qdate_from_iso(f.get('date_fin_reprise')));self.ca_n1.setText(money_text(f.get('ca_n1_centiemes')))
         data={x['mois']:x for x in db.lister_reprise_mensuelle(year)};rows=[];ids=[]
         for m in range(1,13):
-            x=data.get(m,{});rows.append([MOIS[m-1],fcfp(x.get('recettes_centiemes')),fcfp(x.get('depenses_centiemes')),"Oui" if x.get('verifie') else "Non"]);ids.append(m)
+            x=data.get(m,{});rows.append([MOIS[m-1],fcfp(x.get('recettes_centiemes')),fcfp(x.get('depenses_centiemes')),tr("Oui") if x.get('verifie') else tr("Non")]);ids.append(m)
         fill_table(self.table,rows,ids);ctrl=db.verifier_reprise(year);self.status.setText(ctrl['message']+(f" Mois à compléter : {', '.join(MOIS[m-1] for m in ctrl['mois_manquants'])}." if ctrl.get('mois_manquants') else ""))
 
     def edit_month(self):
@@ -1488,66 +1622,66 @@ class RecoveryPage(Page):
 
 class FiscalPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Votre activité", "TVA et chiffre d’affaires", "Choisissez la TVA utilisée pour vos documents.", parent)
-        card = QGroupBox("Choix pour l’année")
+        super().__init__(tr("Votre activité"), tr(tr("Taxe et chiffre d’affaires")), tr(tr("Choisissez la Taxe utilisée pour vos documents.")), parent)
+        card = QGroupBox(tr("Choix pour l’année"))
         form = QFormLayout(card)
         self.year = QSpinBox()
         self.year.setRange(1900, 9999)
         self.year.setValue(g.aujourd_hui().year)
         self.year.valueChanged.connect(self.refresh)
         self.regime = QComboBox()
-        self.regime.addItem("Sans choix · aucune TVA calculée", "")
-        self.regime.addItem("Franchise de TVA", "franchise")
-        self.regime.addItem("TVA applicable", "reel")
+        self.regime.addItem(tr("Sans choix · aucune Taxe calculée"), "")
+        self.regime.addItem(tr("Sans taxe calculée"), "franchise")
+        self.regime.addItem(tr("Taxe applicable"), "reel")
         row = QHBoxLayout()
         row.addWidget(self.regime, 1)
-        row.addWidget(button("Effacer le choix", lambda: self.regime.setCurrentIndex(0), secondary=True))
+        row.addWidget(button(tr("Effacer le choix"), lambda: self.regime.setCurrentIndex(0), secondary=True))
         self.ca = QLineEdit()
-        self.ca.setPlaceholderText("Facultatif")
-        form.addRow("Année", self.year)
-        form.addRow("TVA", row)
-        form.addRow("CA annuel · F CFP", self.ca)
+        self.ca.setPlaceholderText(tr("Facultatif"))
+        form.addRow(tr("Année"), self.year)
+        form.addRow(tr("Taxe"), row)
+        form.addRow("CA annuel · " + regional.configuration()["devise"] + "", self.ca)
         self.layout.addWidget(card)
-        self.layout.addWidget(button("Enregistrer", self.save))
+        self.layout.addWidget(button(tr("Enregistrer"), self.save))
         self.proposal = QLabel()
         self.proposal.setWordWrap(True)
         self.layout.addWidget(self.proposal)
-        note = QLabel("Au-delà de 10 000 000 F CFP, déclarez le dépassement à la DICP dans le mois qui suit. "
-                      "Ce rappel ne bloque aucune opération. Le seuil de TVA peut être proratisé en début d’activité.")
-        note.setWordWrap(True)
-        self.layout.addWidget(note)
-        self.layout.addWidget(button("Informations DICP", lambda: QDesktopServices.openUrl(QUrl(
-            "https://www.service-public.pf/dicp/professionnels/vos-impots/taxe-sur-la-valeur-ajoutee/")), secondary=True))
+        self.local_note = QLabel("Profil Polynésie française : au-delà de 10 000 000 XPF, déclarez le dépassement à la DICP. Ce rappel ne bloque aucune opération.")
+        self.local_note.setWordWrap(True);self.layout.addWidget(self.local_note)
+        self.local_button=button(tr("Informations DICP"),lambda:QDesktopServices.openUrl(QUrl("https://www.service-public.pf/dicp/")),secondary=True)
+        self.layout.addWidget(self.local_button)
         self.layout.addStretch()
 
     def refresh(self, *_):
         f = db.obtenir_fiscalite_annuelle(self.year.value()) or {}
         self.regime.setCurrentIndex(max(0, self.regime.findData(f.get('regime_confirme', ''))))
-        self.ca.setText(decimal_text(f.get('ca_annee_centiemes')))
+        self.ca.setText(money_text(f.get('ca_annee_centiemes')))
         self.proposal.setText(g.rappel_seuil_ca(self.year.value()))
+        local=regional.configuration()['pays']=='PF' and regional.configuration()['devise']=='XPF'
+        self.local_note.setVisible(local);self.local_button.setVisible(local)
 
     def save(self):
         try:
             g.confirmer_fiscalite(self.year.value(), self.regime.currentData(), ca=self.ca.text())
             self.refresh()
-            show_info(self, "Enregistré.")
+            show_info(self, tr("Enregistré."))
         except Exception as exc:
             show_error(self, exc)
 
 
 class SettingsPage(Page):
     def __init__(self,parent=None):
-        super().__init__("Préférences","Réglages","Personnalisez vos documents et votre suivi.",parent)
-        docs=QGroupBox("Documents");f=QFormLayout(docs);self.validity=QSpinBox();self.validity.setRange(1,365);self.terms=QTextEdit();self.payment=QTextEdit();self.note=QTextEdit();
+        super().__init__(tr("Préférences"),tr(tr("Réglages")),tr(tr("Personnalisez vos documents et votre suivi.")),parent)
+        docs=QGroupBox(tr("Documents"));f=QFormLayout(docs);self.validity=QSpinBox();self.validity.setRange(1,365);self.terms=QTextEdit();self.payment=QTextEdit();self.note=QTextEdit();
         for field in (self.terms,self.payment,self.note):
-            field.setFixedHeight(90);field.setPlaceholderText("Facultatif — texte à afficher sur les documents")
-        f.addRow("Validité des devis · jours",self.validity);f.addRow("Conditions de vente (facultatif)",self.terms);f.addRow("Règlement (facultatif)",self.payment);f.addRow("Mentions complémentaires",self.note);self.layout.addWidget(docs)
-        tva=QGroupBox("TVA et trésorerie");tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem("Non renseignée / sans déclaration","");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=DateInput(optional=True);self.balance=QLineEdit();tf.addRow("Fréquence des déclarations",self.period);tf.addRow("Date du solde de départ · JJ/MM/AA",self.balance_date);tf.addRow("Solde banque + caisse · F CFP",self.balance);self.layout.addWidget(tva);self.layout.addWidget(button("Enregistrer les réglages",self.save))
-        actions=QHBoxLayout();actions.addWidget(button("Sauvegarder la base",lambda:backup_database(self)));actions.addWidget(button("Exporter le journal CSV",lambda:export_journal_csv(self),secondary=True));actions.addStretch();self.layout.addLayout(actions);self.layout.addStretch()
+            field.setFixedHeight(90);field.setPlaceholderText(tr("Facultatif — texte à afficher sur les documents"))
+        f.addRow(tr("Validité des devis · jours"),self.validity);f.addRow(tr(tr("Conditions de vente (facultatif)")),self.terms);f.addRow(tr(tr("Règlement (facultatif)")),self.payment);f.addRow(tr(tr("Mentions complémentaires")),self.note);self.layout.addWidget(docs)
+        tva=QGroupBox(tr("Taxe et trésorerie"));tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem(tr(tr("Non renseignée / sans déclaration")),"");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=DateInput(optional=True);self.balance=QLineEdit();tf.addRow(tr(tr("Fréquence des déclarations")),self.period);tf.addRow("Date du solde de départ · " + regional.FORMATS[regional.configuration()["format_date"]],self.balance_date);tf.addRow("Solde banque + caisse · " + regional.configuration()["devise"] + "",self.balance);self.layout.addWidget(tva);self.layout.addWidget(button(tr(tr("Enregistrer les réglages")),self.save))
+        actions=QHBoxLayout();actions.addWidget(button(tr("Sauvegarder la base"),lambda:backup_database(self)));actions.addWidget(button(tr("Exporter le journal CSV"),lambda:export_journal_csv(self),secondary=True));actions.addStretch();self.layout.addLayout(actions);self.layout.addStretch()
     def refresh(self):
-        e=db.obtenir_entreprise() or {};self.validity.setValue(e.get('validite_devis_jours',30));self.terms.setPlainText(e.get('conditions_vente',''));self.payment.setPlainText(e.get('conditions_reglement',''));self.note.setPlainText(e.get('mention_complementaire',''));self.period.setCurrentIndex(max(0,self.period.findData(e.get('periodicite_tva',''))));self.balance_date.setDate(qdate_from_iso(e['date_solde_depart'])) if e.get('date_solde_depart') else self.balance_date.clear();self.balance.setText(decimal_text(e.get('solde_depart_centiemes',0)))
+        e=db.obtenir_entreprise() or {};self.validity.setValue(e.get('validite_devis_jours',30));self.terms.setPlainText(e.get('conditions_vente',''));self.payment.setPlainText(e.get('conditions_reglement',''));self.note.setPlainText(e.get('mention_complementaire',''));self.period.setCurrentIndex(max(0,self.period.findData(e.get('periodicite_tva',''))));self.balance_date.setDate(qdate_from_iso(e['date_solde_depart'])) if e.get('date_solde_depart') else self.balance_date.clear();self.balance.setText(money_text(e.get('solde_depart_centiemes',0)))
     def save(self):
-        try:g.regler_entreprise(self.validity.value(),self.terms.toPlainText(),self.payment.toPlainText(),self.note.toPlainText(),self.period.currentData(),self.balance.text(),iso_date(self.balance_date));self.refresh();show_info(self,"Réglages enregistrés.")
+        try:g.regler_entreprise(self.validity.value(),self.terms.toPlainText(),self.payment.toPlainText(),self.note.toPlainText(),self.period.currentData(),self.balance.text(),iso_date(self.balance_date));self.refresh();show_info(self,tr("Réglages enregistrés."))
         except Exception as exc:show_error(self,exc)
 
 def demander_verification(parent):
@@ -1556,22 +1690,22 @@ def demander_verification(parent):
 
 class UpdatesPage(Page):
     def __init__(self, parent=None):
-        super().__init__("Patenteasy", "Mises à jour", f"Version installée : {VERSION}", parent)
+        super().__init__("Patenteasy", tr("Mises à jour"), f"Version installée : {VERSION}", parent)
         texte = "Recherche sécurisée des versions disponibles. L’installation se fait avec votre accord." if est_admin(self) else "Vous serez informé des nouvelles versions. Seul l’administrateur peut les installer."
         label=QLabel(texte);label.setWordWrap(True);self.layout.addWidget(label)
-        self.layout.addWidget(button("Vérifier les mises à jour", lambda: demander_verification(self)))
+        self.layout.addWidget(button(tr("Vérifier les mises à jour"), lambda: demander_verification(self)))
         self.layout.addStretch()
 
 
 class HelpPage(Page):
     def __init__(self,parent=None):
-        super().__init__("Patenteasy","Aide et contact","Logiciel libre · GNU GPL v3+ · données conservées localement.",parent)
-        intro=QGroupBox("Premiers pas");v=QVBoxLayout(intro);text=QLabel("1. Renseignez votre entreprise et sa date de début.\n2. Choisissez votre TVA et vos préférences.\n3. Ajoutez clients et catalogue.\n4. Créez un devis, vérifiez son PDF, puis émettez-le.\n5. Après acceptation, créez la facture et enregistrez les paiements.");text.setWordWrap(True);v.addWidget(text);self.layout.addWidget(intro)
-        limits=QGroupBox("Points importants");lv=QVBoxLayout(limits);lbl=QLabel("TVA : choisissez le calcul souhaité dans TVA et CA.\nStock : ajoutez vous-même les entrées et sorties.\nTrésorerie : renseignez le solde de départ et toutes les opérations.\nWindows et Android : les versions gratuites ne se synchronisent pas.");lbl.setWordWrap(True);lv.addWidget(lbl);self.layout.addWidget(limits)
-        self.layout.addWidget(button("Recevoir les nouveautés de ska_987", lambda: NewsletterDialog(self).exec(), secondary=True))
-        self.layout.addWidget(button("Participer à l’amélioration", self.participer, secondary=True))
-        self.layout.addWidget(button("Signaler un problème", self.signaler, secondary=True))
-        bar=QHBoxLayout();bar.addWidget(button("Contacter le support",lambda:QDesktopServices.openUrl(QUrl('mailto:sav.centreprotech@proton.me'))));bar.addWidget(button("DICP",lambda:QDesktopServices.openUrl(QUrl('https://www.service-public.pf/dicp/')),secondary=True));bar.addWidget(button("Licence GNU GPL v3",lambda:QDesktopServices.openUrl(QUrl('https://www.gnu.org/licenses/gpl-3.0.html')),secondary=True));bar.addStretch();self.layout.addLayout(bar);self.layout.addStretch()
+        super().__init__("Patenteasy",tr("Aide et contact"),tr("Logiciel libre · GNU GPL v3+ · données conservées localement."),parent)
+        intro=QGroupBox(tr("Premiers pas"));v=QVBoxLayout(intro);text=QLabel("1. Renseignez votre entreprise et sa date de début.\n2. Choisissez votre Taxe et vos préférences.\n3. Ajoutez clients et catalogue.\n4. Créez un devis, vérifiez son PDF, puis émettez-le.\n5. Après acceptation, créez la facture et enregistrez les paiements.");text.setWordWrap(True);v.addWidget(text);self.layout.addWidget(intro)
+        limits=QGroupBox(tr("Points importants"));lv=QVBoxLayout(limits);lbl=QLabel("Taxe : choisissez le calcul souhaité dans Taxe et CA.\nStock : ajoutez vous-même les entrées et sorties.\nTrésorerie : renseignez le solde de départ et toutes les opérations.\nWindows et Android : les versions gratuites ne se synchronisent pas.");lbl.setWordWrap(True);lv.addWidget(lbl);self.layout.addWidget(limits)
+        self.layout.addWidget(button(tr("Recevoir les nouveautés de ska_987"), lambda: NewsletterDialog(self).exec(), secondary=True))
+        self.layout.addWidget(button(tr("Participer à l’amélioration"), self.participer, secondary=True))
+        self.layout.addWidget(button(tr("Signaler un problème"), self.signaler, secondary=True))
+        bar=QHBoxLayout();bar.addWidget(button(tr("Contacter le support"),lambda:QDesktopServices.openUrl(QUrl('mailto:sav.centreprotech@proton.me'))));local=button("DICP",lambda:QDesktopServices.openUrl(QUrl('https://www.service-public.pf/dicp/')),secondary=True);local.setVisible(regional.configuration()["pays"]=="PF");bar.addWidget(local);bar.addWidget(button(tr("Licence GNU GPL v3"),lambda:QDesktopServices.openUrl(QUrl('https://www.gnu.org/licenses/gpl-3.0.html')),secondary=True));bar.addStretch();self.layout.addLayout(bar);self.layout.addStretch()
 
     def participer(self):
         from interface_comptes import ParticipationDialog
@@ -1590,7 +1724,7 @@ class CreationAdminDialog(QDialog):
         self.comptes = comptes
         self.compte = None
 
-        self.setWindowTitle("Bienvenue dans Patenteasy")
+        self.setWindowTitle(tr("Bienvenue dans Patenteasy"))
         self.setMinimumWidth(440)
 
         layout = QVBoxLayout(self)
@@ -1606,22 +1740,22 @@ class CreationAdminDialog(QDialog):
 
         self.identifiant = QLineEdit()
         self.identifiant.setMaxLength(40)
-        self.identifiant.setPlaceholderText("Exemple : mika")
+        self.identifiant.setPlaceholderText(tr("Exemple : admin"))
 
         self.mot_de_passe = QLineEdit()
         self.mot_de_passe.setMaxLength(256)
         self.mot_de_passe.setEchoMode(QLineEdit.EchoMode.Password)
         self.mot_de_passe.setPlaceholderText(
-            "Au moins 12 caractères"
+            tr("Au moins 12 caractères")
         )
 
         self.confirmation = QLineEdit()
         self.confirmation.setMaxLength(256)
         self.confirmation.setEchoMode(QLineEdit.EchoMode.Password)
 
-        formulaire.addRow("Identifiant", self.identifiant)
-        formulaire.addRow("Mot de passe", self.mot_de_passe)
-        formulaire.addRow("Confirmer", self.confirmation)
+        formulaire.addRow(tr("Identifiant"), self.identifiant)
+        formulaire.addRow(tr("Mot de passe"), self.mot_de_passe)
+        formulaire.addRow(tr("Confirmer"), self.confirmation)
         layout.addLayout(formulaire)
 
         self.erreur = QLabel()
@@ -1634,21 +1768,27 @@ class CreationAdminDialog(QDialog):
         )
         boutons.button(
             QDialogButtonBox.StandardButton.Ok
-        ).setText("Créer mon compte")
+        ).setText(tr("Créer mon compte"))
         boutons.button(
             QDialogButtonBox.StandardButton.Cancel
-        ).setText("Quitter")
+        ).setText(tr("Quitter"))
 
         boutons.accepted.connect(self.creer)
         boutons.rejected.connect(self.reject)
         layout.addWidget(boutons)
+        layout.addWidget(button(tr("Récupérer une sauvegarde"),self.restaurer,secondary=True))
+
+    def restaurer(self):
+        from recuperation_ui import RecuperationDialog
+        dialog=RecuperationDialog(self.comptes,self)
+        if dialog.exec():self.compte=dialog.compte;self.accept()
 
     def creer(self):
         mot_de_passe = self.mot_de_passe.text()
 
         if mot_de_passe != self.confirmation.text():
             self.erreur.setText(
-                "Les deux mots de passe sont différents."
+                tr("Les deux mots de passe sont différents.")
             )
             return
 
@@ -1661,7 +1801,7 @@ class CreationAdminDialog(QDialog):
             return
         except Exception:
             self.erreur.setText(
-                "Le compte n’a pas pu être enregistré."
+                tr("Le compte n’a pas pu être enregistré.")
             )
             return
 
@@ -1676,7 +1816,7 @@ class ConnexionDialog(QDialog):
         self.comptes = comptes
         self.compte = None
 
-        self.setWindowTitle("Connexion à Patenteasy")
+        self.setWindowTitle(tr("Connexion à Patenteasy"))
         self.setMinimumWidth(420)
 
         layout = QVBoxLayout(self)
@@ -1689,8 +1829,8 @@ class ConnexionDialog(QDialog):
         self.mot_de_passe.setMaxLength(256)
         self.mot_de_passe.setEchoMode(QLineEdit.EchoMode.Password)
 
-        formulaire.addRow("Identifiant", self.identifiant)
-        formulaire.addRow("Mot de passe", self.mot_de_passe)
+        formulaire.addRow(tr("Identifiant"), self.identifiant)
+        formulaire.addRow(tr("Mot de passe"), self.mot_de_passe)
         layout.addLayout(formulaire)
 
         self.erreur = QLabel()
@@ -1703,12 +1843,12 @@ class ConnexionDialog(QDialog):
         )
         boutons.button(
             QDialogButtonBox.StandardButton.Ok
-        ).setText("Se connecter")
+        ).setText(tr("Se connecter"))
         boutons.button(
             QDialogButtonBox.StandardButton.Cancel
-        ).setText("Quitter")
+        ).setText(tr("Quitter"))
 
-        layout.addWidget(button("Accès administrateur oublié", self.recuperer, secondary=True))
+        layout.addWidget(button(tr("Accès administrateur oublié"), self.recuperer, secondary=True))
         boutons.accepted.connect(self.connecter)
         boutons.rejected.connect(self.reject)
         layout.addWidget(boutons)
@@ -1717,8 +1857,8 @@ class ConnexionDialog(QDialog):
         if not self.comptes.coffre.metadata.exists():
             show_info(self,"La récupération sera disponible après migration du compte administrateur.");return
         from interface_comptes import SecretDialog
-        d=SecretDialog("Récupération administrateur",self)
-        d.identifiant.setPlaceholderText("Code de récupération")
+        d=SecretDialog(tr("Récupération administrateur"),self)
+        d.identifiant.setPlaceholderText(tr("Code de récupération"))
         if d.exec():
             try:
                 ident=self.comptes.recuperer(d.identifiant.text(),d.secret.text())
@@ -1734,7 +1874,7 @@ class ConnexionDialog(QDialog):
             )
         except Exception:
             self.erreur.setText(
-                "La connexion n’a pas pu être vérifiée."
+                tr("La connexion n’a pas pu être vérifiée.")
             )
             return
 
@@ -1771,7 +1911,7 @@ def exiger_admin(widget):
 
     QMessageBox.warning(
         widget,
-        "Accès réservé",
+        tr("Accès réservé"),
         "Cette action est réservée à l’administrateur."
     )
     return False
@@ -1780,16 +1920,16 @@ class AccueilUtilisateurPage(Page):
     def __init__(self, parent=None):
         super().__init__(
             "Patenteasy",
-            "Mon espace de travail",
-            "Clients, devis et règlements.",
+            tr("Mon espace de travail"),
+            tr("Clients, devis et règlements."),
             parent
         )
 
         actions = [
-            ("Clients", "clients"),
-            ("Devis", "devis"),
-            ("Encaissements clients", "factures"),
-            ("Règlements fournisseurs", "journal"),
+            (tr("Clients"), "clients"),
+            (tr("Devis"), "devis"),
+            (tr("Encaissements clients"), "factures"),
+            (tr("Règlements fournisseurs"), "journal"),
         ]
 
         for texte, destination in actions:
@@ -1805,14 +1945,14 @@ class AccueilUtilisateurPage(Page):
 class ReglementsFournisseursPage(Page):
     def __init__(self, parent=None):
         super().__init__(
-            "Opérations courantes",
-            "Règlements fournisseurs",
-            "Enregistrez un règlement effectué.",
+            tr("Opérations courantes"),
+            tr("Règlements fournisseurs"),
+            tr("Enregistrez un règlement effectué."),
             parent
         )
 
         self.layout.addWidget(button(
-            "Enregistrer un règlement",
+            tr("Enregistrer un règlement"),
             self.ajouter_reglement
         ))
         self.layout.addStretch()
@@ -1824,13 +1964,13 @@ class ReglementsFournisseursPage(Page):
             return
 
         dialogue = OperationDialog(parent=self)
-        dialogue.setWindowTitle("Règlement fournisseur")
+        dialogue.setWindowTitle(tr("Règlement fournisseur"))
         dialogue.type.setCurrentIndex(
             dialogue.type.findData("depense")
         )
         dialogue.type.setEnabled(False)
         dialogue.libelle.setPlaceholderText(
-            "Fournisseur et référence de facture"
+            tr("Fournisseur et référence de facture")
         )
 
         if dialogue.exec() != QDialog.DialogCode.Accepted:
@@ -1841,10 +1981,10 @@ class ReglementsFournisseursPage(Page):
             db.ajouter_operation(
                 jour, libelle, "depense", montant
             )
-            self.window().gestion_comptes.tracer("Règlement fournisseur")
+            self.window().gestion_comptes.tracer(tr("Règlement fournisseur"))
             QMessageBox.information(
                 self,
-                "Règlement enregistré",
+                tr("Règlement enregistré"),
                 "Le règlement fournisseur a été enregistré."
             )
         except Exception as erreur:
@@ -1887,28 +2027,28 @@ class MainWindow(QMainWindow):
         self.timer_updates = QTimer(self)
         self.timer_updates.setInterval(250)
         self.timer_updates.timeout.connect(self.recevoir_updates)
-        role = "Administrateur" if est_admin(self) else "Utilisateur"
+        role = tr("Administrateur") if est_admin(self) else tr("Utilisateur")
         self.setWindowTitle(f"Patenteasy {VERSION} — {self.compte_connecte['identifiant']} · {role}")
         icon = ROOT / "static" / "patenteasy.ico"
         if icon.exists(): self.setWindowIcon(QIcon(str(icon)))
         self.resize(1320, 860)
         self.setMinimumSize(780, 520)
         central=QWidget();self.setCentralWidget(central);outer=QHBoxLayout(central);outer.setContentsMargins(0,0,0,0);outer.setSpacing(0)
-        side=QFrame();side.setObjectName("sidebar");side.setFixedWidth(230);sl=QVBoxLayout(side);sl.setContentsMargins(22,26,22,20);brand=QLabel("Patenteasy.");brand.setObjectName("brand");tag=QLabel("Votre activité, simplement.");tag.setObjectName("tagline");sl.addWidget(brand);sl.addWidget(tag);sl.addSpacing(24)
+        side=QFrame();side.setObjectName("sidebar");side.setFixedWidth(230);sl=QVBoxLayout(side);sl.setContentsMargins(22,26,22,20);brand=QLabel("Patenteasy.");brand.setObjectName("brand");tag=QLabel(tr("Votre activité, simplement."));tag.setObjectName("tagline");sl.addWidget(brand);sl.addWidget(tag);sl.addSpacing(24)
         self.nav=QListWidget();self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);self.nav.setObjectName("navigation");sl.addWidget(self.nav,1);foot=QLabel("Développé par ska_987\nLogiciel libre · GNU GPL v3+");foot.setObjectName("sidebarFoot");sl.addWidget(foot);outer.addWidget(side)
-        workspace=QWidget();wl=QVBoxLayout(workspace);wl.setContentsMargins(0,0,0,0);wl.setSpacing(0);top=QFrame();top.setObjectName("topbar");tl=QHBoxLayout(top);tl.setContentsMargins(28,13,28,13);a=QLabel("Gestion artisanale · Polynésie française");a.setObjectName("topbarText");b=QLabel("F CFP · Sur cet ordinateur");b.setObjectName("topbarText");tl.addWidget(a);tl.addStretch();tl.addWidget(b);wl.addWidget(top)
+        workspace=QWidget();wl=QVBoxLayout(workspace);wl.setContentsMargins(0,0,0,0);wl.setSpacing(0);top=QFrame();top.setObjectName("topbar");tl=QHBoxLayout(top);tl.setContentsMargins(28,13,28,13);a=QLabel(tr("Gestion de votre activité"));a.setObjectName("topbarText");b=QLabel("" + regional.configuration()["devise"] + " · Sur cet ordinateur");b.setObjectName("topbarText");tl.addWidget(a);tl.addStretch();tl.addWidget(b);wl.addWidget(top)
         self.alerte_sauvegarde=QPushButton();self.alerte_sauvegarde.setStyleSheet("background:#fff4df;color:#703500;padding:10px;text-align:left;");self.alerte_sauvegarde.clicked.connect(lambda:self.show_page('preferences'));wl.addWidget(self.alerte_sauvegarde)
         self.stack=QStackedWidget();wl.addWidget(self.stack,1);outer.addWidget(workspace,1)
         self.pages={}
         from interface_comptes import ComptesPage, PreferencesPage
         from interface_beta import DemarragePage
         specs=[
-            ("dashboard","Tableau de bord",DashboardPage),("clients","Clients",ClientsPage),("articles","Catalogue",ArticlesPage),("devis","Devis",QuotesPage),("factures","Factures & avoirs",InvoicesPage),("journal","Recettes & dépenses",JournalPage),("stock","Stock",StockPage),("echeances","Échéances",RemindersPage),("entreprise","Mon entreprise",CompanyPage),("reprise","Reprise de données",RecoveryPage),("fiscalite","TVA et CA",FiscalPage),("reglages","Réglages",SettingsPage),("updates","Mises à jour",UpdatesPage),("help","Aide & contact",HelpPage),
+            ("dashboard",tr("Tableau de bord"),DashboardPage),("clients",tr("Clients"),ClientsPage),("articles",tr("Catalogue"),ArticlesPage),("devis",tr("Devis"),QuotesPage),("factures",tr("Factures & avoirs"),InvoicesPage),("journal",tr("Recettes & dépenses"),JournalPage),("stock",tr(tr("Stock")),StockPage),("echeances",tr(tr("Échéances")),RemindersPage),("entreprise",tr(tr("Mon entreprise")),CompanyPage),("reprise",tr(tr("Reprise de données")),RecoveryPage),("fiscalite",tr(tr("Taxe et CA")),FiscalPage),("reglages",tr(tr("Réglages")),SettingsPage),("updates",tr(tr("Mises à jour")),UpdatesPage),("help",tr(tr("Aide & contact")),HelpPage),
         ]
-        specs.extend([("preferences", "Mes préférences", PreferencesPage)])
+        specs.extend([("preferences", tr("Mes préférences"), PreferencesPage)])
         if est_admin(self):
-            specs.append(("comptes", "Comptes utilisateurs", ComptesPage))
-            specs.append(("demarrage", "Bien démarrer", DemarragePage))
+            specs.append(("comptes", tr("Comptes utilisateurs"), ComptesPage))
+            specs.append(("demarrage", tr("Bien démarrer"), DemarragePage))
         if not est_admin(self):
             remplacements = {
                 "dashboard": AccueilUtilisateurPage,
@@ -1924,9 +2064,9 @@ class MainWindow(QMainWindow):
             specs = [
                 (
                     key,
-                    "Règlements fournisseurs"
+                    tr("Règlements fournisseurs")
                     if key == "journal"
-                    else "Encaissements clients"
+                    else tr("Encaissements clients")
                     if key == "factures"
                     else label,
                     cls
@@ -1990,7 +2130,7 @@ class MainWindow(QMainWindow):
             if manuel:
                 QMessageBox.warning(
                     self,
-                    "Mises à jour",
+                    tr("Mises à jour"),
                     "La vérification n’a pas abouti.\n"
                     "Réessayez plus tard. Aucun fichier n’a été installé."
                 )
@@ -2000,7 +2140,7 @@ class MainWindow(QMainWindow):
             if manuel:
                 QMessageBox.information(
                     self,
-                    "Mises à jour",
+                    tr("Mises à jour"),
                     "Le service de mise à jour n’est pas configuré."
                 )
             return
@@ -2010,7 +2150,7 @@ class MainWindow(QMainWindow):
             if manuel:
                 QMessageBox.information(
                     self,
-                    "Mises à jour",
+                    tr("Mises à jour"),
                     "Aucune version plus récente n’est disponible."
                 )
             return
@@ -2038,7 +2178,7 @@ class MainWindow(QMainWindow):
         if getattr(self, "telechargement_en_cours", False):
             QMessageBox.information(
                 self,
-                "Mises à jour",
+                tr("Mises à jour"),
                 "Un téléchargement est déjà en cours."
             )
             return
@@ -2122,7 +2262,7 @@ class MainWindow(QMainWindow):
         if os.name != "nt":
             QMessageBox.information(
                 self,
-                "Mises à jour",
+                tr("Mises à jour"),
                 "Cet installateur est destiné à Windows."
             )
             return
@@ -2201,7 +2341,7 @@ class MainWindow(QMainWindow):
 
         QMessageBox.warning(
             self,
-            "Accès réservé",
+            tr("Accès réservé"),
             "Cette action est réservée à l’administrateur."
         )
         return False
@@ -2278,6 +2418,8 @@ class MainWindow(QMainWindow):
 
 def run() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
+    import localisation
+    localisation.ACTIVE=QSettings("ska_987","Patenteasy").value("langue","fr")
     app.setApplicationName("Patenteasy")
     app.setOrganizationName("ska_987")
     app.setStyleSheet(APP_QSS)
@@ -2299,7 +2441,10 @@ def run() -> int:
 
     compte_connecte = dialogue.compte
     g.migrer()
-    comptes.tracer("Connexion")
+    import localisation
+    localisation.ACTIVE=regional.configuration()['langue']
+    MOIS[:]=[tr(m) for m in MOIS]
+    comptes.tracer(tr("Connexion"))
     dialogue.deleteLater()
 
     window = MainWindow(compte_connecte, comptes)
@@ -2310,14 +2455,16 @@ def run() -> int:
 
     def apres_ouverture():
         from interface_comptes import ParticipationDialog
+        if est_admin(window) and not (db.obtenir_entreprise() or {}).get("nom"):
+            window.show_page("entreprise")
         if comptes.coffre.code_recuperation:
-            d=QDialog(window);d.setWindowTitle("Votre code de récupération");v=QVBoxLayout(d)
-            l=QLabel("Conservez ce code hors de l’ordinateur. Il permet de rétablir votre accès administrateur. Le développeur n’en possède aucune copie.");l.setWordWrap(True);v.addWidget(l)
+            d=QDialog(window);d.setWindowTitle(tr("Votre code de récupération"));v=QVBoxLayout(d)
+            l=QLabel(tr("Conservez ce code hors de l’ordinateur. Il permet de rétablir votre accès administrateur. Le développeur n’en possède aucune copie."));l.setWordWrap(True);v.addWidget(l)
             champ=QLineEdit(comptes.coffre.code_recuperation);champ.setReadOnly(True);v.addWidget(champ)
-            v.addWidget(button("Copier",lambda:QApplication.clipboard().setText(champ.text()),secondary=True))
-            v.addWidget(button("J’ai conservé mon code",d.accept));d.exec();comptes.coffre.code_recuperation=None
+            v.addWidget(button(tr("Copier"),lambda:QApplication.clipboard().setText(champ.text()),secondary=True))
+            v.addWidget(button(tr("J’ai conservé mon code"),d.accept));d.exec();comptes.coffre.code_recuperation=None
         if est_admin(window) and not window.sauvegardes.configuration()["dossier"]:
-            QMessageBox.information(window,"Sauvegardes","Choisissez un dossier pour vos sauvegardes chiffrées. Vous pourrez le modifier dans Mes préférences.")
+            QMessageBox.information(window,tr("Sauvegardes"),"Choisissez un dossier pour vos sauvegardes chiffrées. Vous pourrez le modifier dans Mes préférences.")
             window.pages["preferences"].dossier()
         m=comptes.coffre.lire()
         if est_admin(window) and not m.get("participation_proposee"):

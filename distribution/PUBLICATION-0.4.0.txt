@@ -1,0 +1,32 @@
+PATENTEASY WINDOWS 0.4.0 — INSTALLATION ET MISE À JOUR
+
+Pour installer : fermer Patenteasy, lancer Patenteasy-Windows-0.4.0-Installation.exe.
+Installer par-dessus la version actuelle. Les données et comptes restent dans le profil Windows.
+
+Pour proposer 0.4.0 aux utilisateurs par la mise à jour intégrée :
+1. Extraire tout ce dossier sur le PC éditeur qui possède déjà la clé officielle.
+2. Installer 0.4.0, puis double-cliquer sur Preparer-publication.vbs.
+   Patenteasy contrôle l’empreinte et produit catalogue.json signé. Aucun Python à installer.
+3. Dans Cloudflare, ouvrir R2 > patenteasy-releases.
+4. Envoyer Patenteasy-Windows-0.4.0-Installation.exe à la racine du bucket.
+5. Envoyer catalogue.json à la racine EN DERNIER, en remplaçant l’ancien catalogue.
+   Ne pas modifier le Worker et ne pas envoyer la clé privée.
+6. Sur un poste encore en 0.3.9, ouvrir Patenteasy > Vérifier les mises à jour.
+   La proposition doit afficher 0.4.0 ; télécharger puis installer depuis l’application.
+
+La vérification automatique se fait à l’ouverture du logiciel. Le téléchargement vérifie
+la signature officielle, la taille et le SHA-256. Une sauvegarde précède l’installation.
+Le catalogue sera utilisable par les clients seulement après sa publication sur R2.
+Android reste en 0.3.7.
+
+Nouveautés Windows 0.4.0
+- Profil général : tous métiers, pays facultatif, devise et précision choisies avant les montants.
+- Interface français / anglais, trois formats de date avec séparateurs automatiques.
+- Identifiants, conditions et mentions facultatifs ; choix de taxe sans validation fiscale imposée.
+- Brouillons conservés automatiquement, même avec une date incomplète.
+- Aperçu PDF natif avant enregistrement.
+- Sauvegardes chiffrées autonomes récupérables sur un nouveau PC avec le mot de passe
+  administrateur ou le code de récupération correspondant à la sauvegarde.
+Les anciennes sauvegardes nécessitent aussi acces.json sur un autre PC.
+Les anciens profils conservent leurs montants XPF et leurs réglages locaux.
+Il n’y a pas de conversion automatique des montants ni de validation juridique locale.
