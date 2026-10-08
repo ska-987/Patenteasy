@@ -1,0 +1,78 @@
+name: Distribution Windows
+on:
+  push:
+    branches: ['release/windows-0.3.9']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Dépendances
+        run: python -m pip install -r requirements-dev.txt pyinstaller==6.16.0
+      - name: Tests
+        run: python -m pytest -q tests
+      - name: Construction native
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name Patenteasy --icon static/patenteasy.ico --hidden-import qt_app --hidden-import database --hidden-import gestion --hidden-import editeur --hidden-import mises_a_jour --hidden-import installer_mise_a_jour --hidden-import verification_distribution --hidden-import pdf_documents --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --add-data "static;static" --add-data "configuration_editeur.json;." --add-data "LICENSE;." application_windows.py
+          if ($LASTEXITCODE -ne 0) { throw 'Construction interrompue' }
+      - name: Vérification du programme livré
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP 'verification-programme.json'
+          $p = Start-Process -FilePath '.\dist\Patenteasy\Patenteasy.exe' -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme livré invalide' }
+          $result = Get-Content $report -Raw | ConvertFrom-Json
+          if (-not $result.ok -or $result.version -ne '0.3.9') { throw 'Vérification échouée' }
+          Copy-Item $report distribution/verification-programme.json
+      - name: Installeur complet
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup --yes --no-progress }
+          & $iscc distribution/Patenteasy.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installeur non créé' }
+      - name: Installation et conservation des données
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'Patenteasy-install-test'
+          $data = Join-Path $env:LOCALAPPDATA 'PatenteasyLocal\data'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $marker = Join-Path $data 'verification-conservation.txt'
+          [IO.File]::WriteAllText($marker, 'donnees-a-conserver')
+          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.3.9-Installation.exe'
+          foreach ($pass in 1..2) {
+            $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw 'Installation échouée' }
+            if ((Get-Content $marker -Raw) -ne 'donnees-a-conserver') { throw 'Données altérées' }
+            $report = Join-Path $env:RUNNER_TEMP ('verification-installation-' + $pass + '.json')
+            $p = Start-Process -FilePath (Join-Path $target 'Patenteasy.exe') -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme installé invalide' }
+            if (-not (Get-Content $report -Raw | ConvertFrom-Json).ok) { throw 'Vérification échouée' }
+            Copy-Item $report distribution/
+          }
+      - name: Empreinte et sources
+        shell: pwsh
+        run: |
+          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.3.9-Installation.exe'
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($exe.Name)" | Set-Content distribution/sortie/SHA256SUMS.txt -Encoding ascii
+          @{ version='0.3.9'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
+          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.3.9.zip HEAD
+          Copy-Item distribution/verification-*.json distribution/sortie/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Patenteasy-Windows-0.3.9
+          path: distribution/sortie/*
+          if-no-files-found: error
+          retention-days: 30

@@ -127,17 +127,13 @@ class GestionDocuments:
             c.execute("""UPDATE entreprise SET validite_devis_jours=?,conditions_vente=?,conditions_reglement=?,
             mention_complementaire=?,periodicite_tva=?,solde_depart_centiemes=?,date_solde_depart=? WHERE id=1""", (self.nombre_jours(validite), vente.strip(), reglement.strip(), mention.strip(), periodicite, int(valeur * 100), date_solde))
 
-    def confirmer_fiscalite(self, annee, regime, date_confirmation, ca, date_ca):
+    def confirmer_fiscalite(self, annee, regime, date_confirmation='', ca='', date_ca=''):
         if regime not in ('', 'franchise', 'reel'):
             raise ValueError('Régime invalide.')
-        if regime and (not date_confirmation):
-            raise ValueError('Renseignez la date à partir de laquelle ce régime est confirmé.')
-        if date_confirmation:
-            date_confirmation = self.date_valide(date_confirmation)
         montant = self.base.convertir_en_centiemes(ca) if ca.strip() else None
-        if montant is not None:
-            if not date_ca or date.fromisoformat(self.date_valide(date_ca)).year != annee:
-                raise ValueError('Date du CA requise dans l’année sélectionnée.')
+        # Les anciennes colonnes restent pour la compatibilité des sauvegardes.
+        # Le choix annuel est libre, sans attestation ni date obligatoire.
+        date_confirmation = date_ca = ''
         with self.connexion() as c:
             c.execute("""INSERT INTO fiscalite_annuelle(annee,regime_confirme,date_confirmation,ca_annee_centiemes,date_ca)
             VALUES(?,?,?,?,?) ON CONFLICT(annee) DO UPDATE SET regime_confirme=excluded.regime_confirme,
@@ -145,13 +141,15 @@ class GestionDocuments:
 
     def regime_a_la_date(self, jour):
         f = self.base.obtenir_fiscalite_annuelle(date.fromisoformat(jour).year) or {}
-        if f.get('ca_annee_centiemes') is not None and f['ca_annee_centiemes'] > 10000000 * 100 and (not f.get('date_depassement')) and (f.get('regime_confirme') != 'reel'):
-            return ''
-        connu = self.base.determiner_tva_devis(jour)
-        if connu['applicable'] is True:
-            return 'reel'
-        if f.get('regime_confirme') and f.get('date_confirmation') and (f['date_confirmation'] <= jour):
-            return f['regime_confirme']
+        # Ne jamais changer le calcul choisi à partir du CA ou d'une ancienne date.
+        # Un choix vide signifie sans TVA calculée, sans affirmer une franchise.
+        return f.get('regime_confirme', '')
+
+    def rappel_seuil_ca(self, annee):
+        f = self.base.obtenir_fiscalite_annuelle(annee) or {}
+        if (f.get('ca_annee_centiemes') or 0) > 10000000 * 100:
+            return ('CA supérieur à 10 000 000 F CFP : déclarez le dépassement à la DICP '
+                    'dans le mois qui suit. Votre choix de TVA reste modifiable.')
         return ''
 
     def calculer(self, devis_id):
@@ -181,12 +179,6 @@ class GestionDocuments:
             raise ValueError('Complétez le nom, l’adresse et le numéro TAHITI de votre entreprise.')
         if not s['lignes']:
             raise ValueError('Ajoutez au moins une ligne.')
-        if not s['regime']:
-            raise ValueError('Confirmez le régime applicable dans la reprise fiscale avant l’émission.')
-        if not s['conditions_reglement'].strip():
-            raise ValueError('Renseignez les conditions de règlement.')
-        if s['regime'] == 'reel' and any((l['taxe_centiemes'] == 0 for l in s['lignes'])) and (not s['mention_complementaire'].strip()):
-            raise ValueError('Pour une ligne sans TVA au réel, indiquez le motif applicable dans les mentions complémentaires.')
 
     def numero(self, c, type_doc, annee):
         import re

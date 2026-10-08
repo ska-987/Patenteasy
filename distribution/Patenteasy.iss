@@ -1,4 +1,4 @@
-#define MyAppVersion "0.3.8"
+#define MyAppVersion "0.3.9"
 [Setup]
 AppId={{22CBB249-971D-4915-A2CC-59A2663E80BD}
 AppName=Patenteasy

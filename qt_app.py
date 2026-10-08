@@ -20,7 +20,7 @@ from pathlib import Path
 from queue import Queue, Empty
 from threading import Thread
 
-from PySide6.QtCore import QDate, Qt, QUrl, Signal, QSettings, QTimer
+from PySide6.QtCore import QDate, Qt, QUrl, Signal, QSettings, QTimer, QObject, QEvent
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QLayout,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -159,6 +160,7 @@ QLineEdit, QTextEdit, QComboBox, QDateEdit, QSpinBox {
     border-radius: 6px;
     padding: 7px 9px;
     selection-background-color: #9cbcdf;
+    selection-color: #182336;
 }
 QTextEdit { min-height: 72px; }
 QTableWidget {
@@ -169,6 +171,10 @@ QTableWidget {
     gridline-color: #dce3ed;
     selection-background-color: #dce8f5;
     selection-color: #182336;
+}
+QTableWidget::item:selected {
+    background: #dce8f5;
+    color: #182336;
 }
 QHeaderView::section {
     background: #edf2f7;
@@ -227,6 +233,22 @@ def button(text: str, slot=None, *, secondary=False, danger=False) -> QPushButto
     return b
 
 
+class TableInteraction(QObject):
+    """Désélection sans laisser de ligne courante utilisable par les actions."""
+    def eventFilter(self, obj, event):
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress):
+            return False
+        table = self.parent()
+        clear = (event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape)
+        if obj is table.viewport() and event.type() == QEvent.Type.MouseButtonPress:
+            clear = not table.indexAt(event.position().toPoint()).isValid()
+        if clear:
+            table.clearSelection()
+            table.setCurrentCell(-1, -1)
+            return True
+        return False
+
+
 def configure_table(table: QTableWidget, headers: list[str], stretch_last=True):
     table.setColumnCount(len(headers))
     table.setHorizontalHeaderLabels(headers)
@@ -234,6 +256,12 @@ def configure_table(table: QTableWidget, headers: list[str], stretch_last=True):
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+    table.setMinimumHeight(180)
+    table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    table._interaction = TableInteraction(table)
+    table.installEventFilter(table._interaction)
+    table.viewport().installEventFilter(table._interaction)
     table.verticalHeader().setVisible(False)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
     if stretch_last and headers:
@@ -253,6 +281,8 @@ def fill_table(table: QTableWidget, rows: list[list[object]], ids: list[int] | N
 
 
 def selected_id(table: QTableWidget) -> int | None:
+    if not table.selectionModel().hasSelection():
+        return None
     row = table.currentRow()
     if row < 0:
         return None
@@ -339,6 +369,7 @@ class Page(QWidget):
         self.body = QWidget()
         self.scroll.setWidget(self.body)
         self.layout = QVBoxLayout(self.body)
+        self.layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         self.layout.setContentsMargins(32, 26, 32, 40)
         self.layout.setSpacing(14)
         eye = QLabel(eyebrow.upper())
@@ -366,9 +397,15 @@ class FormDialog(QDialog):
         self.setWindowTitle(title)
         self.setMinimumWidth(520)
         self.root = QVBoxLayout(self)
-        self.form = QFormLayout()
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        body = QWidget()
+        self.scroll.setWidget(body)
+        self.form = QFormLayout(body)
+        self.form.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         self.form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.root.addLayout(self.form)
+        self.root.addWidget(self.scroll)
+        self.resize(560, 480)
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
@@ -532,7 +569,14 @@ class CreditDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Émettre un avoir")
         self.setMinimumWidth(600)
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        body = QWidget()
+        root = QVBoxLayout(body)
+        root.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        self.scroll.setWidget(body)
+        outer.addWidget(self.scroll)
         intro = QLabel("Indiquez les quantités à créditer. Laissez 0 pour une ligne non concernée.")
         intro.setWordWrap(True)
         root.addWidget(intro)
@@ -748,6 +792,9 @@ class DashboardPage(Page):
         quotes = db.lister_devis()[:6]
         fill_table(self.quotes, [[f'#{x["id"]}', x["nom_client"], x["objet"], x["statut"]] for x in quotes])
         alerts = list(summary.get("alertes", []))
+        fiscal_reminder = g.rappel_seuil_ca(current_year)
+        if fiscal_reminder:
+            alerts.append(fiscal_reminder)
         if not e.get("nom"):
             alerts.insert(0, "Commencez par renseigner votre entreprise.")
         self.alert.setText("\n".join("• " + x for x in alerts))
@@ -846,7 +893,14 @@ class QuoteEditorDialog(QDialog):
         self.quote_id = quote_id
         self.setWindowTitle("Devis")
         self.resize(1120, 790)
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        body = QWidget()
+        root = QVBoxLayout(body)
+        root.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        self.scroll.setWidget(body)
+        outer.addWidget(self.scroll)
         self.status = QLabel()
         self.status.setObjectName("lead")
         root.addWidget(self.status)
@@ -863,10 +917,19 @@ class QuoteEditorDialog(QDialog):
         form.addWidget(QLabel("Date"), 0, 2); form.addWidget(self.date, 0, 3)
         form.addWidget(QLabel("Objet"), 1, 0); form.addWidget(self.objet, 1, 1, 1, 3)
         form.addWidget(QLabel("Validité (jours)"), 2, 0); form.addWidget(self.validite, 2, 1)
-        form.addWidget(QLabel("Conditions de vente"), 3, 0); form.addWidget(self.vente, 3, 1, 1, 3)
-        form.addWidget(QLabel("Conditions de règlement"), 4, 0); form.addWidget(self.reglement, 4, 1, 1, 3)
-        form.addWidget(QLabel("Mention complémentaire"), 5, 0); form.addWidget(self.mention, 5, 1, 1, 3)
         root.addWidget(header)
+        self.terms_panel = QGroupBox("Textes du document · facultatifs")
+        terms_form = QFormLayout(self.terms_panel)
+        for label, field in (("Conditions de vente", self.vente), ("Règlement", self.reglement), ("Mention", self.mention)):
+            field.setFixedHeight(85)
+            field.setPlaceholderText("Facultatif")
+            terms_form.addRow(label, field)
+        self.terms_toggle = button("Conditions et mentions", secondary=True)
+        self.terms_toggle.setCheckable(True)
+        self.terms_toggle.toggled.connect(self.terms_panel.setVisible)
+        root.addWidget(self.terms_toggle)
+        root.addWidget(self.terms_panel)
+        self.terms_panel.hide()
         linebar = QHBoxLayout()
         self.add_catalog_btn = button("Ajouter du catalogue", self.add_catalog)
         self.add_free_btn = button("Ajouter une ligne libre", self.add_free, secondary=True)
@@ -879,9 +942,9 @@ class QuoteEditorDialog(QDialog):
         configure_table(self.lines, ["Désignation", "Quantité", "Prix HT", "TVA %", "Total HT", "Réf."])
         self.lines.doubleClicked.connect(self.edit_line)
         root.addWidget(self.lines, 1)
-        self.total = QLabel(); self.total.setProperty("class", "metricValue"); self.total.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.total = QLabel(); self.total.setWordWrap(True); self.total.setProperty("class", "metricValue"); self.total.setAlignment(Qt.AlignmentFlag.AlignRight)
         root.addWidget(self.total)
-        actions = QHBoxLayout()
+        actions = QGridLayout()
         self.save_btn = button("Enregistrer le brouillon", self.save_header)
         self.pdf_btn = button("PDF", self.export_pdf, secondary=True)
         self.emit_btn = button("Émettre et figer", self.emit_quote)
@@ -890,8 +953,9 @@ class QuoteEditorDialog(QDialog):
         self.invoice_btn = button("Créer la facture", self.create_invoice)
         self.duplicate_btn = button("Dupliquer", self.duplicate, secondary=True)
         close = button("Fermer", self.accept, secondary=True)
-        for b in [self.save_btn, self.pdf_btn, self.emit_btn, self.accept_btn, self.refuse_btn, self.invoice_btn, self.duplicate_btn]: actions.addWidget(b)
-        actions.addStretch(); actions.addWidget(close)
+        for i, b in enumerate([self.save_btn, self.pdf_btn, self.emit_btn, self.accept_btn, self.refuse_btn, self.invoice_btn, self.duplicate_btn]):
+            actions.addWidget(b, i // 4, i % 4)
+        outer.addWidget(close)
         root.addLayout(actions)
         self.refresh()
 
@@ -916,7 +980,7 @@ class QuoteEditorDialog(QDialog):
         if regime:
             total += f'   ·   TVA : {fcfp(s["tva"])}   ·   Total : {fcfp(s["ttc"])}'
         else:
-            total += "   ·   Régime fiscal à confirmer"
+            total += f'   ·   Total : {fcfp(s["ttc"])} · Sans TVA calculée'
         self.total.setText(total)
         draft = d["statut"] == "brouillon"
         sent = d["statut"] == "envoye"
@@ -1064,7 +1128,14 @@ class InvoiceDialog(QDialog):
         self.document_id = document_id
         self.resize(980, 720)
         self.setWindowTitle("Facture / avoir")
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        body = QWidget()
+        root = QVBoxLayout(body)
+        root.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        self.scroll.setWidget(body)
+        outer.addWidget(self.scroll)
         self.heading = QLabel(); self.heading.setObjectName("title"); root.addWidget(self.heading)
         self.metrics = QLabel(); self.metrics.setObjectName("lead"); root.addWidget(self.metrics)
         self.lines = QTableWidget(); configure_table(self.lines, ["Désignation", "Quantité", "Total HT"]); root.addWidget(self.lines, 1)
@@ -1306,14 +1377,14 @@ class RecoveryPage(Page):
     def __init__(self,parent=None):
         super().__init__("Historique","Reprise de données","Ajoutez les montants des mois précédents une seule fois.",parent)
         top=QHBoxLayout();self.year=QSpinBox();self.year.setRange(1900,9999);self.year.setValue(g.aujourd_hui().year);self.year.valueChanged.connect(self.refresh);top.addWidget(QLabel("Année"));top.addWidget(self.year);top.addStretch();self.layout.addLayout(top)
-        settings=QGroupBox("Période et situation antérieure");f=QFormLayout(settings);self.end=make_date();self.ca_n1=QLineEdit();self.option=QLineEdit();self.exceed=QLineEdit();f.addRow("Date de fin de reprise",self.end);f.addRow("CA année N−1 · F CFP",self.ca_n1);f.addRow("Date effet option réel (AAAA-MM-JJ)",self.option);f.addRow("Date dépassement (AAAA-MM-JJ)",self.exceed);self.layout.addWidget(settings)
-        buttons=QHBoxLayout();buttons.addWidget(button("Enregistrer la période",self.save_end));buttons.addWidget(button("Enregistrer CA N−1",self.save_ca,secondary=True));buttons.addWidget(button("Enregistrer option réel",self.save_option,secondary=True));buttons.addWidget(button("Enregistrer dépassement",self.save_exceed,secondary=True));buttons.addStretch();self.layout.addLayout(buttons)
+        settings=QGroupBox("Période et situation antérieure");f=QFormLayout(settings);self.end=make_date();self.ca_n1=QLineEdit();f.addRow("Date de fin de reprise",self.end);f.addRow("CA année N−1 · F CFP",self.ca_n1);self.layout.addWidget(settings)
+        buttons=QHBoxLayout();buttons.addWidget(button("Enregistrer la période",self.save_end));buttons.addWidget(button("Enregistrer CA N−1",self.save_ca,secondary=True));buttons.addWidget(button("TVA et CA",lambda:self.navigate.emit("fiscalite"),secondary=True));buttons.addStretch();self.layout.addLayout(buttons)
         self.status=QLabel();self.status.setWordWrap(True);self.layout.addWidget(self.status)
         self.table=QTableWidget();configure_table(self.table,["Mois","Recettes","Dépenses","Vérifié"]);self.table.doubleClicked.connect(self.edit_month);self.layout.addWidget(self.table)
         self.layout.addWidget(QLabel("Double-cliquez un mois pour saisir ou corriger ses montants."))
 
     def refresh(self,*_):
-        year=self.year.value();f=db.obtenir_fiscalite_annuelle(year) or {};self.end.setDate(qdate_from_iso(f.get('date_fin_reprise')));self.ca_n1.setText(decimal_text(f.get('ca_n1_centiemes')));self.option.setText(f.get('date_effet_option_reel',''));self.exceed.setText(f.get('date_depassement',''))
+        year=self.year.value();f=db.obtenir_fiscalite_annuelle(year) or {};self.end.setDate(qdate_from_iso(f.get('date_fin_reprise')));self.ca_n1.setText(decimal_text(f.get('ca_n1_centiemes')))
         data={x['mois']:x for x in db.lister_reprise_mensuelle(year)};rows=[];ids=[]
         for m in range(1,13):
             x=data.get(m,{});rows.append([MOIS[m-1],fcfp(x.get('recettes_centiemes')),fcfp(x.get('depenses_centiemes')),"Oui" if x.get('verifie') else "Non"]);ids.append(m)
@@ -1332,30 +1403,64 @@ class RecoveryPage(Page):
     def save_ca(self):
         try:db.enregistrer_ca_n1(self.year.value(),self.ca_n1.text());self.refresh()
         except Exception as exc:show_error(self,exc)
-    def save_option(self):
-        try:db.enregistrer_option_reel(self.year.value(),self.option.text());self.refresh()
-        except Exception as exc:show_error(self,exc)
-    def save_exceed(self):
-        try:db.enregistrer_depassement(self.year.value(),self.exceed.text());self.refresh()
-        except Exception as exc:show_error(self,exc)
 
 
 class FiscalPage(Page):
-    def __init__(self,parent=None):
-        super().__init__("Fiscalité","Situation fiscale","Renseignez votre situation auprès de la DICP.",parent)
-        card=QGroupBox("Confirmation annuelle");f=QFormLayout(card);self.year=QSpinBox();self.year.setRange(1900,9999);self.year.setValue(g.aujourd_hui().year);self.year.valueChanged.connect(self.refresh);self.regime=QComboBox();self.regime.addItem("Non confirmé","");self.regime.addItem("Franchise de TVA","franchise");self.regime.addItem("Régime réel / TVA applicable","reel");self.confirm_date=QLineEdit();self.ca=QLineEdit();self.ca_date=QLineEdit();f.addRow("Année",self.year);f.addRow("Régime confirmé",self.regime);f.addRow("Date de confirmation (AAAA-MM-JJ)",self.confirm_date);f.addRow("CA annuel · F CFP",self.ca);f.addRow("Date du CA (AAAA-MM-JJ)",self.ca_date);self.layout.addWidget(card);self.layout.addWidget(button("Enregistrer la situation fiscale",self.save));self.proposal=QLabel();self.proposal.setWordWrap(True);self.layout.addWidget(self.proposal);self.layout.addStretch()
-    def refresh(self,*_):
-        year=self.year.value();f=db.obtenir_fiscalite_annuelle(year) or {};self.regime.setCurrentIndex(max(0,self.regime.findData(f.get('regime_confirme',''))));self.confirm_date.setText(f.get('date_confirmation',''));self.ca.setText(decimal_text(f.get('ca_annee_centiemes')));self.ca_date.setText(f.get('date_ca',''))
-        p=db.proposer_regime_tva(year);self.proposal.setText(p.get("titre", "Situation à vérifier") + "\n" + p.get("message", ""))
+    def __init__(self, parent=None):
+        super().__init__("Votre activité", "TVA et chiffre d’affaires", "Choisissez la TVA utilisée pour vos documents.", parent)
+        card = QGroupBox("Choix pour l’année")
+        form = QFormLayout(card)
+        self.year = QSpinBox()
+        self.year.setRange(1900, 9999)
+        self.year.setValue(g.aujourd_hui().year)
+        self.year.valueChanged.connect(self.refresh)
+        self.regime = QComboBox()
+        self.regime.addItem("Sans choix · aucune TVA calculée", "")
+        self.regime.addItem("Franchise de TVA", "franchise")
+        self.regime.addItem("TVA applicable", "reel")
+        row = QHBoxLayout()
+        row.addWidget(self.regime, 1)
+        row.addWidget(button("Effacer le choix", lambda: self.regime.setCurrentIndex(0), secondary=True))
+        self.ca = QLineEdit()
+        self.ca.setPlaceholderText("Facultatif")
+        form.addRow("Année", self.year)
+        form.addRow("TVA", row)
+        form.addRow("CA annuel · F CFP", self.ca)
+        self.layout.addWidget(card)
+        self.layout.addWidget(button("Enregistrer", self.save))
+        self.proposal = QLabel()
+        self.proposal.setWordWrap(True)
+        self.layout.addWidget(self.proposal)
+        note = QLabel("Au-delà de 10 000 000 F CFP, déclarez le dépassement à la DICP dans le mois qui suit. "
+                      "Ce rappel ne bloque aucune opération. Le seuil de TVA peut être proratisé en début d’activité.")
+        note.setWordWrap(True)
+        self.layout.addWidget(note)
+        self.layout.addWidget(button("Informations DICP", lambda: QDesktopServices.openUrl(QUrl(
+            "https://www.service-public.pf/dicp/professionnels/vos-impots/taxe-sur-la-valeur-ajoutee/")), secondary=True))
+        self.layout.addStretch()
+
+    def refresh(self, *_):
+        f = db.obtenir_fiscalite_annuelle(self.year.value()) or {}
+        self.regime.setCurrentIndex(max(0, self.regime.findData(f.get('regime_confirme', ''))))
+        self.ca.setText(decimal_text(f.get('ca_annee_centiemes')))
+        self.proposal.setText(g.rappel_seuil_ca(self.year.value()))
+
     def save(self):
-        try:g.confirmer_fiscalite(self.year.value(),self.regime.currentData(),self.confirm_date.text(),self.ca.text(),self.ca_date.text());self.refresh();show_info(self,"Situation fiscale enregistrée.")
-        except Exception as exc:show_error(self,exc)
+        try:
+            g.confirmer_fiscalite(self.year.value(), self.regime.currentData(), ca=self.ca.text())
+            self.refresh()
+            show_info(self, "Enregistré.")
+        except Exception as exc:
+            show_error(self, exc)
 
 
 class SettingsPage(Page):
     def __init__(self,parent=None):
         super().__init__("Préférences","Réglages","Personnalisez vos documents et votre suivi.",parent)
-        docs=QGroupBox("Documents");f=QFormLayout(docs);self.validity=QSpinBox();self.validity.setRange(1,365);self.terms=QTextEdit();self.payment=QTextEdit();self.note=QTextEdit();f.addRow("Validité des devis · jours",self.validity);f.addRow("Conditions de vente",self.terms);f.addRow("Conditions de règlement",self.payment);f.addRow("Mentions complémentaires",self.note);self.layout.addWidget(docs)
+        docs=QGroupBox("Documents");f=QFormLayout(docs);self.validity=QSpinBox();self.validity.setRange(1,365);self.terms=QTextEdit();self.payment=QTextEdit();self.note=QTextEdit();
+        for field in (self.terms,self.payment,self.note):
+            field.setFixedHeight(90);field.setPlaceholderText("Facultatif — texte à afficher sur les documents")
+        f.addRow("Validité des devis · jours",self.validity);f.addRow("Conditions de vente (facultatif)",self.terms);f.addRow("Règlement (facultatif)",self.payment);f.addRow("Mentions complémentaires",self.note);self.layout.addWidget(docs)
         tva=QGroupBox("TVA et trésorerie");tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem("Non renseignée / sans déclaration","");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=QLineEdit();self.balance=QLineEdit();tf.addRow("Fréquence des déclarations",self.period);tf.addRow("Date du solde de départ (AAAA-MM-JJ)",self.balance_date);tf.addRow("Solde banque + caisse · F CFP",self.balance);self.layout.addWidget(tva);self.layout.addWidget(button("Enregistrer les réglages",self.save))
         actions=QHBoxLayout();actions.addWidget(button("Sauvegarder la base",lambda:backup_database(self)));actions.addWidget(button("Exporter le journal CSV",lambda:export_journal_csv(self),secondary=True));actions.addStretch();self.layout.addLayout(actions);self.layout.addStretch()
     def refresh(self):
@@ -1380,8 +1485,8 @@ class UpdatesPage(Page):
 class HelpPage(Page):
     def __init__(self,parent=None):
         super().__init__("Patenteasy","Aide et contact","Logiciel libre · GNU GPL v3+ · données conservées localement.",parent)
-        intro=QGroupBox("Premiers pas");v=QVBoxLayout(intro);text=QLabel("1. Renseignez votre entreprise et sa date de début.\n2. Configurez vos conditions et votre situation fiscale.\n3. Ajoutez clients et catalogue.\n4. Créez un devis, vérifiez son PDF, puis émettez-le.\n5. Après acceptation, créez la facture et enregistrez les paiements.");text.setWordWrap(True);v.addWidget(text);self.layout.addWidget(intro)
-        limits=QGroupBox("Points importants");lv=QVBoxLayout(limits);lbl=QLabel("Fiscalité : confirmez votre régime et vos dates auprès de la DICP.\nStock : ajoutez vous-même les entrées et sorties.\nTrésorerie : renseignez le solde de départ et toutes les opérations.\nWindows et Android : les versions gratuites ne se synchronisent pas.");lbl.setWordWrap(True);lv.addWidget(lbl);self.layout.addWidget(limits)
+        intro=QGroupBox("Premiers pas");v=QVBoxLayout(intro);text=QLabel("1. Renseignez votre entreprise et sa date de début.\n2. Choisissez votre TVA et vos préférences.\n3. Ajoutez clients et catalogue.\n4. Créez un devis, vérifiez son PDF, puis émettez-le.\n5. Après acceptation, créez la facture et enregistrez les paiements.");text.setWordWrap(True);v.addWidget(text);self.layout.addWidget(intro)
+        limits=QGroupBox("Points importants");lv=QVBoxLayout(limits);lbl=QLabel("TVA : choisissez le calcul souhaité dans TVA et CA.\nStock : ajoutez vous-même les entrées et sorties.\nTrésorerie : renseignez le solde de départ et toutes les opérations.\nWindows et Android : les versions gratuites ne se synchronisent pas.");lbl.setWordWrap(True);lv.addWidget(lbl);self.layout.addWidget(limits)
         self.layout.addWidget(button("Recevoir les nouveautés de ska_987", lambda: NewsletterDialog(self).exec(), secondary=True))
         self.layout.addWidget(button("Participer à l’amélioration", self.participer, secondary=True))
         self.layout.addWidget(button("Signaler un problème", self.signaler, secondary=True))
@@ -1706,7 +1811,7 @@ class MainWindow(QMainWindow):
         icon = ROOT / "static" / "patenteasy.ico"
         if icon.exists(): self.setWindowIcon(QIcon(str(icon)))
         self.resize(1320, 860)
-        self.setMinimumSize(980, 680)
+        self.setMinimumSize(780, 520)
         central=QWidget();self.setCentralWidget(central);outer=QHBoxLayout(central);outer.setContentsMargins(0,0,0,0);outer.setSpacing(0)
         side=QFrame();side.setObjectName("sidebar");side.setFixedWidth(230);sl=QVBoxLayout(side);sl.setContentsMargins(22,26,22,20);brand=QLabel("Patenteasy.");brand.setObjectName("brand");tag=QLabel("Votre activité, simplement.");tag.setObjectName("tagline");sl.addWidget(brand);sl.addWidget(tag);sl.addSpacing(24)
         self.nav=QListWidget();self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);self.nav.setObjectName("navigation");sl.addWidget(self.nav,1);foot=QLabel("Développé par ska_987\nLogiciel libre · GNU GPL v3+");foot.setObjectName("sidebarFoot");sl.addWidget(foot);outer.addWidget(side)
@@ -1717,7 +1822,7 @@ class MainWindow(QMainWindow):
         from interface_comptes import ComptesPage, PreferencesPage
         from interface_beta import DemarragePage
         specs=[
-            ("dashboard","Tableau de bord",DashboardPage),("clients","Clients",ClientsPage),("articles","Catalogue",ArticlesPage),("devis","Devis",QuotesPage),("factures","Factures & avoirs",InvoicesPage),("journal","Recettes & dépenses",JournalPage),("stock","Stock",StockPage),("echeances","Échéances",RemindersPage),("entreprise","Mon entreprise",CompanyPage),("reprise","Reprise de données",RecoveryPage),("fiscalite","Situation fiscale",FiscalPage),("reglages","Réglages",SettingsPage),("updates","Mises à jour",UpdatesPage),("help","Aide & contact",HelpPage),
+            ("dashboard","Tableau de bord",DashboardPage),("clients","Clients",ClientsPage),("articles","Catalogue",ArticlesPage),("devis","Devis",QuotesPage),("factures","Factures & avoirs",InvoicesPage),("journal","Recettes & dépenses",JournalPage),("stock","Stock",StockPage),("echeances","Échéances",RemindersPage),("entreprise","Mon entreprise",CompanyPage),("reprise","Reprise de données",RecoveryPage),("fiscalite","TVA et CA",FiscalPage),("reglages","Réglages",SettingsPage),("updates","Mises à jour",UpdatesPage),("help","Aide & contact",HelpPage),
         ]
         specs.extend([("preferences", "Mes préférences", PreferencesPage)])
         if est_admin(self):
@@ -2026,7 +2131,7 @@ class MainWindow(QMainWindow):
         style=APP_QSS
         if p.get("theme")=="Sombre":
             for a,b in {"#f4f6f9":"#171d28","#182336":"#e5eaf2","background: white":"background: #232c3a","background: #fff":"background: #232c3a","#dce3ed":"#455269","#65748a":"#bbc6d7","#eef2f7":"#2c384b"}.items():style=style.replace(a,b)
-            style+="\nQLineEdit,QTextEdit,QComboBox,QSpinBox,QDateEdit,QTableWidget {background:#232c3a;color:#e5eaf2;} QHeaderView::section {background:#2c384b;color:#e5eaf2;}"
+            style+="\nQLineEdit,QTextEdit,QComboBox,QSpinBox,QDateEdit,QTableWidget {background:#232c3a;color:#e5eaf2;} QHeaderView::section {background:#2c384b;color:#e5eaf2;} QTableWidget {alternate-background-color:#293344;selection-background-color:#37577a;selection-color:#ffffff;} QTableWidget::item:selected {background:#37577a;color:#ffffff;} QLineEdit,QTextEdit,QComboBox,QSpinBox,QDateEdit {selection-background-color:#37577a;selection-color:#ffffff;}"
         if p.get("theme")=="Personnalisé":
             c=QColor(p.get("accent","#2563eb"))
             if c.isValid():

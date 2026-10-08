@@ -135,7 +135,9 @@ def test_lignes_modification_et_regime_inconnu(application):
     assert post(application,f'/devis/{did}/lignes/{ligne}/modifier',reference='MO',designation='Main d’œuvre',unite='heure',quantite='2',prix_unitaire='3500',taxe='13').status_code==200
     assert g.calculer(did)['ht']==700000
     g.confirmer_fiscalite(g.aujourd_hui().year,'','','','')
-    assert post(application,f'/devis/{did}/emettre').status_code==400
-    assert db.obtenir_devis(did)['statut']=='brouillon'
+    assert post(application,f'/devis/{did}/emettre').status_code==200
+    assert db.obtenir_devis(did)['statut']=='envoye'
+    did=g.dupliquer_devis(did)
+    ligne=db.lister_lignes_devis(did)[0]['id']
     assert post(application,f'/devis/{did}/lignes/{ligne}/supprimer').status_code==200
     assert db.lister_lignes_devis(did)==[]

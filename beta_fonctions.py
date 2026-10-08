@@ -10,9 +10,11 @@ from urllib.parse import urlencode
 import database as db
 import gestion as g
 
-NOUVEAUTES = ('Un démarrage guidé en quatre étapes.', 'Recherche dans les clients, devis et factures selon vos droits.',
-              'Relances de factures préparées par mail.', 'Alerte visible si la sauvegarde manque ou a échoué.',
-              'Export CSV des recettes et dépenses pour l’administrateur.', 'Résumé des nouveautés après une mise à jour.')
+NOUVEAUTES = ('Sélection lisible et désélection avec Échap.',
+              'Formulaires et documents défilants.',
+              'Conditions et mentions des devis repliables et facultatives.',
+              'Choix de TVA sans dates ni attestation ; CA facultatif.',
+              'Rappel de dépassement de 10 millions sans blocage.')
 
 def cellule_csv(valeur):
     s=str(valeur if valeur is not None else '')

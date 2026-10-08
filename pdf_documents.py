@@ -60,7 +60,7 @@ def generer(s, brouillon=False):
             elements.append(p('TVA '+monnaie(g['taux'])+' % — base '+monnaie(g['base'])+' : '+monnaie(g['tva'])+' F CFP'))
     if s['mention_tva']: elements.append(p(s['mention_tva']))
     elements.append(p(('Montant de l’avoir' if typ=='avoir' else 'Total à payer')+' : '+monnaie(s['ttc'])+' F CFP','Heading2'))
-    if not s['regime']: elements.append(p('Régime fiscal à confirmer : total définitif non établi.'))
+    if not s['regime']: elements.append(p('Sans TVA calculée — choix non renseigné.'))
     for titre,champ in [('Conditions de vente','conditions_vente'),('Conditions de règlement','conditions_reglement'),('Mentions complémentaires','mention_complementaire')]:
         if s.get(champ): elements.extend([p(titre,'Heading3'),p(s[champ])])
     if typ=='devis': elements.extend([Spacer(1,6*mm),p('Acceptation : nom, date et accord écrit du client. Conservez la preuve d’acceptation avec ce devis.')])
