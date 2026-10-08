@@ -53,6 +53,22 @@ def verifier(rapport):
             facture = g.creer_facture(devis, jour, jour)
             facture_ui = InvoiceDialog(facture)
             assert callable(facture_ui.preview_pdf) and callable(facture_ui.export_pdf)
+            import qt_app
+            from PySide6.QtCore import QTimer
+            originale_erreur = qt_app.show_error
+            def remonter_erreur(parent, erreur): raise erreur
+            qt_app.show_error = remonter_erreur
+            visites = []
+            def fermer_apercu():
+                modal = app.activeModalWidget()
+                visites.append(modal is not None)
+                if modal is not None: modal.accept()
+            try:
+                QTimer.singleShot(0, fermer_apercu)
+                facture_ui.preview_pdf()
+                assert visites == [True]
+            finally:
+                qt_app.show_error = originale_erreur
             import exports_pdf
             from PySide6.QtCore import QSettings, QStandardPaths
             from PySide6.QtWidgets import QMessageBox, QFileDialog, QDialog

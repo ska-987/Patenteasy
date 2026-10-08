@@ -112,7 +112,7 @@ def test_premier_export_cree_dossier_et_memorise(app,export_dir,monkeypatch):
     assert p==bureau/'Patenteasy'/'fact-00001.pdf' and p.read_bytes()==b'%PDF-test'
     assert q.parent==p.parent and q.read_bytes()==b'%PDF-test-2'
     assert asked==[1] and Path(settings.value('exports_pdf/dossier'))==p.parent
-    assert defaults==[str(p),str(q)]
+    assert [Path(x) for x in defaults]==[p,q]
 
 
 def test_export_choix_autre_dossier_et_annulation(app,export_dir,tmp_path,monkeypatch):
@@ -146,8 +146,9 @@ def test_export_depuis_apercu_utilise_dossier_memorise(app,facture,export_dir,mo
         if dialog:
             next(b for b in dialog.findChildren(QPushButton) if b.text()=='Enregistrer le PDF').click()
             dialog.accept()
-    QTimer.singleShot(0,click)
-    apercu_pdf.ouvrir(None,ui.generer(g.document(ident)['contenu']),'facture-apercu.pdf')
+    for _ in range(3):
+        QTimer.singleShot(0,click)
+        apercu_pdf.ouvrir(None,ui.generer(g.document(ident)['contenu']),'facture-apercu.pdf')
     assert (bureau/'facture-apercu.pdf').read_bytes().startswith(b'%PDF')
 
 
