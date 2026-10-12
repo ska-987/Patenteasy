@@ -4,6 +4,13 @@ Toutes les modifications importantes de Patenteasy seront documentées dans ce f
 
 Le projet suit un versionnement de type `MAJEUR.MINEUR.CORRECTIF` lorsque cela est applicable.
 
+## [0.4.2] - 2026-10-12
+
+- Factures Windows et Android : détail des règlements reçus et reste à régler dans l’aperçu et les PDF.
+- Actualisation à chaque export depuis les paiements enregistrés, sans modifier les montants de la facture émise.
+- Gestion des paiements successifs, règlement complet et avoirs ; correction également applicable aux anciennes factures.
+- Android : versionCode 11 pour la mise à jour depuis 0.4.1.
+
 ## [Unreleased]
 
 - Factures : ouverture, aperçu PDF, export direct et encaissement accessibles depuis la liste et le tableau de bord.

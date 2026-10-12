@@ -65,7 +65,7 @@ def test_signature_et_contenu_android_correspondent_a_la_construction(tmp_path,m
     for fichier in (candidat,apk):
         with zipfile.ZipFile(fichier,'w') as z:z.writestr('AndroidManifest.xml',b'manifeste-controle');z.writestr('classes.dex',b'code-controle')
     jar=tmp_path/'apksigner.jar';jar.write_bytes(b'outil-sdk')
-    m={'version':VERSION_ANDROID,'versionCode':10,'package':'pf.ska987.patenteasy.local','source':'commit-verifie',
+    m={'version':VERSION_ANDROID,'versionCode':11,'package':'pf.ska987.patenteasy.local','source':'commit-verifie',
        'taille':candidat.stat().st_size,'sha256':hashlib.sha256(candidat.read_bytes()).hexdigest(),
        'apksigner_sha256':hashlib.sha256(jar.read_bytes()).hexdigest()}
     (tmp_path/'android-verifie.json').write_text(json.dumps(m))

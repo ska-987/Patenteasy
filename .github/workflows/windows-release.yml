@@ -1,4 +1,4 @@
-name: Patenteasy bêta 0.4.1 · Windows et Android
+name: Patenteasy bêta 0.4.2 · Windows et Android
 on:
   push:
     branches: ['work/factures-pdf', 'main']
@@ -33,7 +33,7 @@ jobs:
           $p = Start-Process -FilePath '.\dist\Patenteasy\Patenteasy.exe' -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
           if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme livré invalide' }
           $result = Get-Content $report -Raw | ConvertFrom-Json
-          if (-not $result.ok -or $result.version -ne '0.4.1') { throw 'Vérification échouée' }
+          if (-not $result.ok -or $result.version -ne '0.4.2') { throw 'Vérification échouée' }
           Copy-Item $report distribution/verification-programme.json
       - name: Installeur complet
         shell: pwsh
@@ -55,7 +55,7 @@ jobs:
           if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne '4f494ea32901ed1e5e443ae60b890e791146da54e5d00ae9e31ddedafb5d0a25') { throw 'Ancien installeur invalide' }
           $p = Start-Process -FilePath $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw 'Installation 0.4.0 échouée' }
-          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.4.1-Installation.exe'
+          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.4.2-Installation.exe'
           foreach ($pass in 1..2) {
             $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw 'Installation échouée' }
@@ -69,15 +69,15 @@ jobs:
       - name: Empreinte et sources
         shell: pwsh
         run: |
-          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.4.1-Installation.exe'
+          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.4.2-Installation.exe'
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($exe.Name)" | Set-Content distribution/sortie/SHA256SUMS.txt -Encoding ascii
-          @{ version='0.4.1'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
-          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.4.1.zip HEAD
+          @{ version='0.4.2'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
+          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.4.2.zip HEAD
           Copy-Item distribution/verification-*.json distribution/sortie/
       - uses: actions/upload-artifact@v4
         with:
-          name: Patenteasy-Windows-0.4.1
+          name: Patenteasy-Windows-0.4.2
           path: distribution/sortie/*
           if-no-files-found: error
           retention-days: 30
@@ -112,12 +112,12 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('pret='+('non' if manquants else 'oui')+'\n')
           if manquants:
               print('::warning::Publication non effectuée : clés de signature ou accès Cloudflare non configurés. Les constructions restent disponibles pour le PC éditeur.')
-              with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('### Publication non effectuée\nConfigurer les secrets de signature et Cloudflare documentés dans distribution/PUBLICATION-0.4.1.md. Aucun catalogue ni APK de production remplacé.\n')
+              with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('### Publication non effectuée\nConfigurer les secrets de signature et Cloudflare documentés dans distribution/PUBLICATION-0.4.2.md. Aucun catalogue ni APK de production remplacé.\n')
           PY
       - uses: actions/download-artifact@v4
         if: steps.acces.outputs.pret == 'oui'
         with:
-          pattern: Patenteasy-*-0.4.1*
+          pattern: Patenteasy-*-0.4.2*
           path: publication
           merge-multiple: true
       - uses: actions/setup-java@v4
@@ -146,16 +146,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view v0.4.1-beta >/dev/null 2>&1; then
-            gh release create v0.4.1-beta --target "$GITHUB_SHA" --prerelease --title 'Patenteasy bêta 0.4.1 · Windows et Android' --notes-file distribution/PUBLICATION-0.4.1.md publication/Patenteasy-Windows-0.4.1-Installation.exe publication/Patenteasy-Android-0.4.1.apk publication/catalogue.json publication/Patenteasy-Sources-0.4.1.zip
+          if ! gh release view v0.4.2-beta >/dev/null 2>&1; then
+            gh release create v0.4.2-beta --target "$GITHUB_SHA" --prerelease --title 'Patenteasy bêta 0.4.2 · Windows et Android' --notes-file distribution/PUBLICATION-0.4.2.md publication/Patenteasy-Windows-0.4.2-Installation.exe publication/Patenteasy-Android-0.4.2.apk publication/catalogue.json publication/Patenteasy-Sources-0.4.2.zip
           fi
       - uses: actions/upload-artifact@v4
         if: steps.acces.outputs.pret == 'oui'
         with:
-          name: Patenteasy-Beta-0.4.1-Publiee
+          name: Patenteasy-Beta-0.4.2-Publiee
           path: |
-            publication/Patenteasy-Windows-0.4.1-Installation.exe
-            publication/Patenteasy-Android-0.4.1.apk
+            publication/Patenteasy-Windows-0.4.2-Installation.exe
+            publication/Patenteasy-Android-0.4.2.apk
             publication/catalogue.json
           if-no-files-found: error
       - name: Retirer les copies temporaires des clés
@@ -201,7 +201,7 @@ jobs:
           python distribution/manifeste_android.py
       - uses: actions/upload-artifact@v4
         with:
-          name: Patenteasy-Android-0.4.1-A-SIGNER
+          name: Patenteasy-Android-0.4.2-A-SIGNER
           path: |
             android/build/*-A-SIGNER.apk
             android/build/apksigner.jar

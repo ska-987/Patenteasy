@@ -17,7 +17,7 @@ ANCIENNES_NOUVEAUTES = ('Sélection lisible et désélection avec Échap.',
               'Choix de TVA sans dates ni attestation ; CA facultatif.',
               'Rappel de dépassement de 10 millions sans blocage.')
 
-NOUVEAUTES = ('Pays, devise, précision et formats configurables.', 'Brouillons enregistrés automatiquement, même avec une date à compléter.', 'Aperçu PDF avant l’enregistrement du fichier.', 'Sauvegardes portables récupérables sur un nouveau PC.', 'Rappels fiscaux locaux informatifs.')
+NOUVEAUTES = ('Les factures et PDF affichent les règlements reçus et le reste à régler.', 'Les paiements successifs actualisent le solde jusqu’au règlement complet.', 'Réexportez les anciens PDF pour afficher les paiements déjà enregistrés.')
 
 def cellule_csv(valeur):
     s=str(valeur if valeur is not None else '')
