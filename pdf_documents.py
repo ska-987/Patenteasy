@@ -131,7 +131,8 @@ def generer(s, brouillon=False, *, conditions=None):
         for g in s['groupes']:
             fin.append(p(taxe+' '+monnaie(g['taux'])+' % — base '+M(g['base'])+' : '+M(g['tva'])+' '+cfg['devise']))
     if s['mention_tva']: fin.append(p(s['mention_tva']))
-    fin.append(p((P('Montant de l’avoir') if typ=='avoir' else P('Total à payer'))+' : '+M(s['ttc'])+' '+cfg['devise'],'Heading2'))
+    total_label = (P('Montant de l’avoir') if typ == 'avoir' else ('Invoice total' if anglais else 'Total de la facture') if typ == 'facture' and s.get('reglements') is not None else P('Total à payer'))
+    fin.append(p(total_label + ' : ' + M(s['ttc']) + ' ' + cfg['devise'], 'Heading2'))
     if typ == 'facture' and s.get('reglements') is not None:
         reglements = s['reglements']
         fin.append(p(('Payments received' if anglais else 'Règlements reçus') + ' : ' + M(reglements['paye']) + ' ' + cfg['devise']))
