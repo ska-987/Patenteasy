@@ -167,3 +167,23 @@ def test_especes_profil_general_sans_regle_locale(app,facture):
     ident,_=facture
     g.payer(ident,g.aujourd_hui().isoformat(),'10.25','especes','')
     assert g.document(ident)['paye']==1025
+
+
+def test_pdf_reglements_actualises_sans_modifier_facture(app,facture,tmp_path):
+    ident,_=facture
+    original=g.document(ident)['instantane']
+    jour=g.aujourd_hui().isoformat()
+    for montant,paye,reste in [(None,0,2050),('10.25',1025,1025),('5.00',1525,525),('5.25',2050,0)]:
+        if montant is not None:g.payer(ident,jour,montant,'virement','REGLEMENT-PARTIEL')
+        document=g.document(ident)
+        assert document['instantane']==original
+        assert document['contenu']['reglements']['paye']==paye
+        assert document['contenu']['reglements']['reste']==reste
+        pdf=tmp_path/'reglements.pdf';pdf.write_bytes(ui.generer(document['contenu']))
+        lecture=QPdfDocument();assert lecture.load(str(pdf))==QPdfDocument.Error.None_
+        texte=' '.join(lecture.getAllText(i).text() for i in range(lecture.pageCount()))
+        lecture.close()
+        assert 'Règlements reçus' in texte and 'Reste à régler' in texte
+        import regional
+        assert regional.montant(reste,document['contenu']['entreprise'],unite=False) in texte
+        if montant is not None:assert 'REGLEMENT-PARTIEL' in texte

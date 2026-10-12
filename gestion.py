@@ -314,6 +314,13 @@ class GestionDocuments:
                 d['remboursements'] = self.liste('SELECT * FROM remboursements WHERE document_id=? ORDER BY id', (identifiant,))
                 d['a_rembourser'] = max(0, d['paye'] - (d['total_centiemes'] - d['credite'])) - sum((r['montant_centiemes'] for r in d['remboursements']))
                 d['paiements'] = self.liste('SELECT * FROM paiements WHERE document_id=? ORDER BY date_paiement,id', (identifiant,))
+                if d['type'] == 'facture':
+                    # Vue courante pour aperçu/export, sans modifier l'instantané émis.
+                    d['contenu']['reglements'] = {
+                        'paye': d['paye'], 'credite': d['credite'],
+                        'reste': d['reste'], 'paiements': d['paiements'],
+                        'a_rembourser': d['a_rembourser'],
+                    }
                 return d
         raise ValueError('Document introuvable.')
 

@@ -132,6 +132,18 @@ def generer(s, brouillon=False, *, conditions=None):
             fin.append(p(taxe+' '+monnaie(g['taux'])+' % — base '+M(g['base'])+' : '+M(g['tva'])+' '+cfg['devise']))
     if s['mention_tva']: fin.append(p(s['mention_tva']))
     fin.append(p((P('Montant de l’avoir') if typ=='avoir' else P('Total à payer'))+' : '+M(s['ttc'])+' '+cfg['devise'],'Heading2'))
+    if typ == 'facture' and s.get('reglements') is not None:
+        reglements = s['reglements']
+        fin.append(p(('Payments received' if anglais else 'Règlements reçus') + ' : ' + M(reglements['paye']) + ' ' + cfg['devise']))
+        for paiement in reglements['paiements']:
+            detail = D(paiement['date_paiement']) + ' · ' + M(paiement['montant_centiemes']) + ' ' + cfg['devise'] + ' · ' + paiement['mode']
+            if paiement.get('reference'): detail += ' · ' + paiement['reference']
+            fin.append(p(detail, 'Petit'))
+        if reglements['credite']:
+            fin.append(p(('Credit notes applied' if anglais else 'Avoirs déduits') + ' : ' + M(reglements['credite']) + ' ' + cfg['devise']))
+        fin.append(p(('Balance due' if anglais else 'Reste à régler') + ' : ' + M(reglements['reste']) + ' ' + cfg['devise'], 'Heading2'))
+        if reglements.get('a_rembourser'):
+            fin.append(p(('Amount to refund' if anglais else 'Montant à rembourser') + ' : ' + M(reglements['a_rembourser']) + ' ' + cfg['devise']))
     if not s['regime']: fin.append(p(P('Sans taxe calculée — choix non renseigné.')))
     if typ=='devis': fin.extend([Spacer(1,6*mm),p(P('Acceptation : nom, date et accord écrit du client. Conservez la preuve d’acceptation avec ce devis.'))])
     paragraphes = []

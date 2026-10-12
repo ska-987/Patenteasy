@@ -46,6 +46,17 @@ final class DocumentPdf {
             JSONObject t=s.getJSONObject("totaux");p.y+=12;if(p.y+70>Pages.BAS)p.nouvelle();
             p.bloc("HT : "+monnaie(t.getLong("ht"),e),11,false,false);p.bloc(taxe+" : "+monnaie(t.getLong("tva"),e),11,false,false);
             p.bloc(("Avoir".equals(type)?"Total à créditer : ":"Total : ")+monnaie(t.getLong("ttc"),e),14,true,false);
+            JSONObject reglements=s.optJSONObject("reglements");
+            if("Facture".equals(type)&&reglements!=null){
+                p.bloc("Règlements reçus : "+monnaie(reglements.getLong("paye"),e),11,false,false);
+                JSONArray paiements=reglements.getJSONArray("paiements");
+                for(int i=0;i<paiements.length();i++){
+                    JSONObject paiement=paiements.getJSONObject(i);
+                    p.bloc(date(paiement.getString("date"))+" · "+monnaie(paiement.getLong("montant"),e)+" · "+paiement.getString("mode"),10,false,false);
+                }
+                if(reglements.getLong("credite")>0)p.bloc("Avoirs déduits : "+monnaie(reglements.getLong("credite"),e),11,false,false);
+                p.bloc("Reste à régler : "+monnaie(reglements.getLong("reste"),e),14,true,false);
+            }
             JSONObject conditions=enveloppe.optJSONObject("conditions");if(conditions!=null){
                 SpannableStringBuilder contenu=new SpannableStringBuilder();String[] cles={"vente","reglement","mention"},titres={"Conditions de vente","Conditions de règlement","Informations complémentaires"};
                 for(int i=0;i<cles.length;i++){
