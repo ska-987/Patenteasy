@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QLabel,QPushButton,QHBoxLayout,QVBoxLayout,QFormL
 import database as db
 from finances_pro import FinancesPro
 from licences_pro import LicencePro
-from qt_app import Page, money_text
+from qt_app import Page, money_text, marquer_module
 
 SOURCES={'tva1010':'https://www.service-public.pf/dicp/', 'it':'https://www.service-public.pf/dicp/',
  'tpe':'https://www.service-public.pf/dicp/', 'tva1040':'https://www.service-public.pf/dicp/',
@@ -35,14 +35,15 @@ def montant(texte):return db.base.convertir_montant(texte or '0')
 class ProPage(Page):
     def __init__(self,titre,parent,module):
         super().__init__('Licence annuelle',titre,'Les données existantes restent dans votre coffre.',parent)
-        self.service=FinancesPro();self.module=module;self.etat=QLabel();self.etat.setWordWrap(True);self.layout.addWidget(self.etat)
+        self.service=FinancesPro();self.module=module;self.titre_module=titre;self.etat=QLabel();self.etat.setWordWrap(True);self.layout.addWidget(self.etat)
         h=QHBoxLayout();bouton(h,'Ouvrir Licence',lambda:self.navigate.emit('licence'));bouton(h,'Demander une licence annuelle',lambda:QDesktopServices.openUrl(QUrl('mailto:sav.centreprotech@proton.me?subject=Licence%20annuelle%20Patenteasy')));self.layout.addLayout(h)
         self.actions_pro=[]
     def executer(self,action):
         try:action()
         except Exception as e:QMessageBox.warning(self,'Patenteasy',str(e))
     def autorise(self):
-        s=self.service.licence.etat();ok=s['active'] and self.module in s['modules'];self.etat.setText(s['message']+ (' • Expiration : '+s.get('expiration','') if s['active'] else ''))
+        s=self.service.licence.etat();ok=marquer_module(self.etat,self.titre_module,self.module,s)
+        if not ok:self.etat.setToolTip('Finances : calculs TVA et dépenses détaillées. Administratif : dossiers préparatoires et rappels. Une licence annuelle autorisant ce module est nécessaire.')
         for a in self.actions_pro:a.setEnabled(ok)
         return ok
 
@@ -61,6 +62,7 @@ class LicencePage(Page):
         try:
             if Path(chemin).stat().st_size>65536:raise ValueError('Licence trop volumineuse.')
             self.licence.importer(Path(chemin).read_text(encoding='utf-8'));self.refresh()
+            if hasattr(self.window(),'rafraichir_modules'):self.window().rafraichir_modules()
             QMessageBox.information(self,'Licence','Licence vérifiée et activée.')
         except Exception as e:QMessageBox.warning(self,'Licence',str(e))
 

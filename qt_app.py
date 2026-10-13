@@ -21,7 +21,7 @@ from pathlib import Path
 from queue import Queue, Empty
 from threading import Thread
 
-from PySide6.QtCore import QDate, Qt, QUrl, Signal, QSettings, QTimer, QObject, QEvent, QLocale
+from PySide6.QtCore import QDate, QSize, Qt, QUrl, Signal, QSettings, QTimer, QObject, QEvent, QLocale
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -308,6 +308,20 @@ def iso_date(widget: DateInput) -> str:
     return widget.date().toString(Qt.DateFormat.ISODate)
 
 
+def marquer_module(widget, titre, module, etat):
+    """État visible, indépendant de la couleur et des droits du service."""
+    actif = bool(etat.get('active') and module in etat.get('modules', []))
+    statut = 'Activé' if actif else 'À débloquer'
+    widget.setText(('✓ ' if actif else '🔒 ') + titre + '\n' + statut)
+    widget.setAccessibleName(titre + ' — ' + statut)
+    widget.setToolTip('Module activé par votre licence annuelle.' if actif else 'Module payant : ouvrir pour découvrir les fonctions et activer ou demander une licence annuelle.')
+    sombre = hasattr(widget.window(), 'gestion_comptes') and widget.window().gestion_comptes.preferences().get('theme') == 'Sombre'
+    fond, texte, bord = (('#173b31', '#bbf7d0', '#4ade80') if actif else ('#453219', '#ffdda2', '#f0b351')) if sombre else (('#e8f5ed', '#195f39', '#74b58a') if actif else ('#fff1d6', '#754300', '#d69a35'))
+    widget.setStyleSheet('background:' + fond + ';color:' + texte + ';border:1px solid ' + bord + ';border-radius:7px;padding:8px;font-weight:600;')
+    widget.setProperty('module_active', actif)
+    return actif
+
+
 def button(text: str, slot=None, *, secondary=False, danger=False) -> QPushButton:
     b = QPushButton(tr(text))
     if secondary:
@@ -327,6 +341,20 @@ class DateTableItem(QTableWidgetItem):
 
 class TableInteraction(QObject):
     """Désélection sans laisser de ligne courante utilisable par les actions."""
+    def rafraichir_modules(self):
+        if not getattr(self, 'modules_navigation', None):
+            return
+        from licences_pro import LicencePro
+        etat = LicencePro(db.base).etat()
+        for key, (item, badge) in self.modules_navigation.items():
+            titre, module = ('Finances et TVA', 'finance_tva') if key == 'finances_pro' else ('Préparation administrative', 'administratif')
+            marquer_module(badge, titre, module, etat)
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, badge.accessibleName())
+        for key, attr, titre in [('dashboard', 'bouton_finances', 'Finances et TVA'), ('journal', 'bouton_depenses', 'Dépenses détaillées HT / TVA / TTC')]:
+            page = self.pages.get(key)
+            if page and hasattr(page, attr):
+                marquer_module(getattr(page, attr), titre, 'finance_tva', etat)
+
     def eventFilter(self, obj, event):
         if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
             return False
@@ -887,7 +915,8 @@ class DashboardPage(Page):
         self.finance_annuelle = QLabel("Finances et TVA : licence annuelle requise.")
         self.finance_annuelle.setWordWrap(True)
         self.layout.addWidget(self.finance_annuelle)
-        self.layout.addWidget(button("Ouvrir les finances et la TVA", lambda:self.navigate.emit("finances_pro"),secondary=True))
+        self.bouton_finances = button("Finances et TVA", lambda:self.navigate.emit("finances_pro"),secondary=True)
+        self.layout.addWidget(self.bouton_finances)
         self.m_recettes = MetricCard(tr("Recettes enregistrées cette année"))
         self.m_depenses = MetricCard(tr("Dépenses enregistrées"))
         self.m_restant = MetricCard(tr("Reste à encaisser"))
@@ -937,6 +966,7 @@ class DashboardPage(Page):
         pro=FinancesPro()
         try:
             etat=pro.licence.etat()
+            marquer_module(self.bouton_finances, 'Finances et TVA', 'finance_tva', etat)
             if etat['active'] and 'finance_tva' in etat['modules']:
                 aujourdhui=g.aujourd_hui().isoformat();r=pro.calculer(aujourdhui[:8]+'01',aujourdhui,(db.obtenir_fiscalite_annuelle(g.aujourd_hui().year) or {}).get('regime_confirme',''),0)
                 self.finance_annuelle.setText('Mois en cours • TVA perçue : '+money_text(r['tva_percue'])+' • TVA déductible : '+money_text(r['tva_deductible'])+' • À reverser : '+money_text(r['a_reverser'])+'\nConfirmez le régime de la période et le crédit antérieur dans Finances.')
@@ -1528,7 +1558,8 @@ class JournalPage(Page):
         super().__init__(tr("Trésorerie"), tr("Recettes et dépenses"), tr("Notez vos recettes et vos dépenses."), parent)
         top=QHBoxLayout(); self.year=QSpinBox(); self.year.setRange(1900, 9999); self.year.setValue(g.aujourd_hui().year); self.year.valueChanged.connect(self.refresh)
         top.addWidget(QLabel(tr("Année")));top.addWidget(self.year);top.addWidget(button(tr("Ajouter une opération"),self.add));top.addWidget(button(tr("Modifier"),self.edit,secondary=True));top.addWidget(button(tr("Supprimer"),self.delete,danger=True));top.addWidget(button(tr("Exporter CSV"),self.exporter_csv,secondary=True));top.addStretch();self.layout.addLayout(top)
-        self.layout.addWidget(button("Dépenses détaillées HT / TVA / TTC • licence annuelle",lambda:self.navigate.emit("finances_pro"),secondary=True))
+        self.bouton_depenses = button("Dépenses détaillées HT / TVA / TTC",lambda:self.navigate.emit("finances_pro"),secondary=True)
+        self.layout.addWidget(self.bouton_depenses)
         metrics=QHBoxLayout();self.rec=MetricCard(tr("Recettes"));self.dep=MetricCard(tr("Dépenses"));self.diff=MetricCard(tr("Différence"))
         for m in [self.rec,self.dep,self.diff]:metrics.addWidget(m)
         self.layout.addLayout(metrics)
@@ -1536,6 +1567,8 @@ class JournalPage(Page):
         self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr("Type"),tr("Montant")]);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
 
     def refresh(self,*_):
+        from licences_pro import LicencePro
+        marquer_module(self.bouton_depenses, 'Dépenses détaillées HT / TVA / TTC', 'finance_tva', LicencePro(db.base).etat())
         year=self.year.value(); summary=db.obtenir_resume_annuel(year);self.rec.value.setText(fcfp(summary["recettes"]));self.dep.value.setText(fcfp(summary["depenses"]));self.diff.value.setText(fcfp(summary["difference"]));self.alert.setText("\n".join("• "+a for a in summary.get("alertes",[])))
         rows=db.lister_operations(year);fill_table(self.table,[[x["date_operation"],x["libelle"],x["type_operation"],fcfp(x["montant_centiemes"])] for x in rows],[x["id"] for x in rows])
 
@@ -2222,6 +2255,17 @@ class MainWindow(QMainWindow):
             ]
         for key,label,cls in specs:
             item=QListWidgetItem(label);item.setData(Qt.ItemDataRole.UserRole,key);self.nav.addItem(item);page=cls(self);page.navigate.connect(self.show_page);self.pages[key]=page;self.stack.addWidget(page)
+        self.modules_navigation = {}
+        for row in range(self.nav.count()):
+            item = self.nav.item(row)
+            key = item.data(Qt.ItemDataRole.UserRole)
+            if key in ('finances_pro', 'administratif_pro'):
+                badge = QLabel(self.nav)
+                badge.setWordWrap(True)
+                badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                item.setSizeHint(QSize(180, 76))
+                self.nav.setItemWidget(item, badge)
+                self.modules_navigation[key] = (item, badge)
         self.nav.currentItemChanged.connect(self._nav_changed)
         self.nav.setCurrentRow(0)
         if est_admin(self) and not (db.obtenir_entreprise() or {}).get("nom"):
@@ -2506,6 +2550,21 @@ class MainWindow(QMainWindow):
                 couleur=c.name();texte="#182336" if c.lightnessF()>0.6 else "white"
                 style+=f"\nQPushButton {{background:{couleur};color:{texte};}} QPushButton[secondary=\"true\"] {{background:#e8eef8;color:#182336;}} QPushButton[danger=\"true\"] {{background:#b91c1c;color:white;}}"
         QApplication.instance().setStyleSheet(style)
+        self.rafraichir_modules()
+
+    def rafraichir_modules(self):
+        if not getattr(self, 'modules_navigation', None):
+            return
+        from licences_pro import LicencePro
+        etat = LicencePro(db.base).etat()
+        for key, (item, badge) in self.modules_navigation.items():
+            titre, module = ('Finances et TVA', 'finance_tva') if key == 'finances_pro' else ('Préparation administrative', 'administratif')
+            marquer_module(badge, titre, module, etat)
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, badge.accessibleName())
+        for key, attr, titre in [('dashboard', 'bouton_finances', 'Finances et TVA'), ('journal', 'bouton_depenses', 'Dépenses détaillées HT / TVA / TTC')]:
+            page = self.pages.get(key)
+            if page and hasattr(page, attr):
+                marquer_module(getattr(page, attr), titre, 'finance_tva', etat)
 
     def eventFilter(self, obj, event):
         from PySide6.QtCore import QEvent
@@ -2554,7 +2613,7 @@ class MainWindow(QMainWindow):
             return
         page=self.pages.get(key)
         if not page:return
-        try:page.refresh();self.rafraichir_sauvegarde()
+        try:page.refresh();self.rafraichir_sauvegarde();self.rafraichir_modules()
         except Exception as exc:show_error(self,exc)
         self.stack.setCurrentWidget(page)
         if sync_nav:

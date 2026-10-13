@@ -1,3 +1,7 @@
+## 0.4.4 — 2026-10-13
+
+Modules payants en couleur ambre avec cadenas et À débloquer ; vert et Activé uniquement pour les droits autorisés. Navigation, tableau de bord et dépenses Windows/Android ; actualisation après activation.
+
 # Version 0.4.3 — 2026-10-13
 
 Module annuel, clé publique SKA intégrée, construction Windows complète et Android versionCode 12.
