@@ -2,10 +2,14 @@ import os
 from pathlib import Path
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtGui import QFontDatabase, QFont
 from qt_app import marquer_module
 
 def test_module_badges_rights_expiration_and_render():
     app = QApplication.instance() or QApplication([])
+    font_id = QFontDatabase.addApplicationFont(str(Path(__file__).resolve().parents[1] / 'static/fonts/DejaVuSans.ttf'))
+    assert font_id >= 0
+    app.setFont(QFont(QFontDatabase.applicationFontFamilies(font_id)[0], 10))
     class Preferences:
         def __init__(self, theme): self.theme = theme
         def preferences(self): return {'theme': self.theme}
