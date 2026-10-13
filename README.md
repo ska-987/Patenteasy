@@ -7,7 +7,9 @@ Vous êtes indépendant, artisan ou à la tête d’une petite entreprise ? Pate
 
 ## Télécharger Patenteasy
 
-👉 **[Accéder aux téléchargements officiels](https://drive.proton.me/urls/ZD87JFPW44#kdecNnhPndLG)**
+🖥️ **[Télécharger pour Windows — bêta 0.4.4](https://patenteasy-updates.sav-centreprotech.workers.dev/fichiers/Patenteasy-Windows-0.4.4-Installation.exe)**
+
+📱 **[Télécharger pour Android — bêta 0.4.4](https://patenteasy-updates.sav-centreprotech.workers.dev/fichiers/Patenteasy-Android-0.4.4.apk)**
 
 Choisissez l’installateur **Windows `.exe`** ou l’application **Android `.apk`**. Aucune compilation à faire.
 
