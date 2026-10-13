@@ -14,6 +14,7 @@ for(const role of ['admin','utilisateur']){
  window.Android={charger:()=>JSON.stringify(donnees),sauver:s=>{donnees=JSON.parse(s);return true;},session:()=>ok({identifiant:role==='admin'?'mika':'employe',role,preferences}),configuration:()=>JSON.stringify({paypal_url:'https://www.paypal.com/ncp/payment/A3ELC2Q8GM82N',telechargements_url:'https://drive.proton.me/urls/ZD87JFPW44#kdecNnhPndLG'}),bienvenueVue:()=>true,marquerBienvenue:()=>true,sauvegardeEtat:()=>ok({configure:true,derniere:Date.now(),erreur:''}),miseAJourEtat:()=>ok({nouvelle:true,version:'0.3.7'}),comptes:()=>ok([{identifiant:'mika',role:'admin',actif:true},{identifiant:'employe',role:'utilisateur',actif:true}]),journalAcces:()=>ok([]),preferences:s=>{preferences=JSON.parse(s);return ok(true);},motDePasse:()=>ok(true),sauvegarder:()=>{},verifierMiseAJour:()=>{},creerCompte:()=>ok(true),activer:()=>ok(true),deconnexion:()=>{},pdf:(nom,html)=>{pdfExporte=html;},partagerPdf:()=>{},exportCsv:()=>{}};
  const sandbox={window,document:doc,console,Intl,Date,URL,URLSearchParams,FormData,setInterval:()=>1,setTimeout:()=>1,localStorage:{getItem:()=>null,setItem:()=>{}},location:{href:''},confirm:()=>true,prompt:()=>null};const ctx=vm.createContext(sandbox);vm.runInContext(fs.readFileSync(path.join(assets,'model.js'),'utf8'),ctx);vm.runInContext(fs.readFileSync(path.join(assets,'app.js'),'utf8'),ctx);
  vm.runInContext(fs.readFileSync(path.join(assets,'beta.js'),'utf8'),ctx);
+ vm.runInContext(fs.readFileSync(path.join(assets,'pro.js'),'utf8'),ctx);
  const content=()=>doc.getElementById('contenu').textContent;const evalJS=s=>vm.runInContext(s,ctx);
  assert.match(doc.getElementById('session').textContent,role==='admin'?/Administrateur/:/Utilisateur/);checks++;
  if(role==='admin'){assert.match(content(),/Recettes/);checks++;}else{assert.doesNotMatch(content(),/Recettes|Trésorerie|Dépenses/);assert.equal(doc.querySelector('[data-page=entreprise]').hidden,true);evalJS('interfaceMobile.journal()');assert.match(content(),/Régler un fournisseur/);assert.doesNotMatch(content(),/Opérations/);evalJS('interfaceMobile.factures()');doc.querySelector('input[name=numero]').value='fact-D-00001';doc.getElementById('recherche').onsubmit({preventDefault(){},target:doc.getElementById('recherche')});assert.match(content(),/Reste à encaisser/);assert.equal(doc.getElementById('avoir'),null);assert.equal(evalJS("(()=>{try{gestion.avoir('x','test');return false;}catch(e){return /administrateur/.test(e.message);}})()"),true);checks+=6;}
@@ -35,6 +36,18 @@ for(const role of ['admin','utilisateur']){
  if(role==='admin'){evalJS('OutilsBeta.demarrage()');assert.match(content(),/Bien démarrer/);checks++;}
  assert.ok(doc.getElementById('backup-notice').hidden);checks++;
  evalJS('demanderNouveautes()');assert.equal(doc.getElementById('dialog-stats').hasAttribute('checked'),false);assert.equal(doc.getElementById('dialog-news').hasAttribute('checked'),false);checks+=2;
+ assert.equal(doc.querySelector('[data-page=finances_pro]').hidden,role!=='admin');checks++;
+ if(role==='admin'){
+  evalJS('financesEcran()');assert.match(content(),/licence annuelle payante/);checks++;
+  window.Android.licenceEtat=()=>ok({active:true,modules:['finance_tva','administratif'],message:'Licence active.'});window.Android.verifierDroit=()=>ok(true);
+  evalJS('financesEcran()');assert.ok(doc.getElementById('pro-calcul'));assert.ok(doc.getElementById('pro-ajout'));checks+=2;
+  doc.getElementById('pro-ajout').onclick();const d=doc.querySelector('dialog:last-of-type');
+  d.querySelector('[name=fournisseur]').value='Fournisseur test';d.querySelector('[name=reference]').value='ACH-TEST';d.querySelector('[name=justificatif]').checked=true;
+  let ligne=d.querySelector('[data-pro-ligne]');for(const [k,v] of [['ht','1000'],['taux','16'],['tva','160'],['ttc','1160']])ligne.querySelector('[data-champ='+k+']').value=v;
+  d.querySelector('[name=paye]').value='580';d.querySelector('#pro-ligne').onclick();ligne=d.querySelectorAll('[data-pro-ligne]')[1];for(const [k,v] of [['ht','100'],['taux','5'],['tva','5'],['ttc','105']])ligne.querySelector('[data-champ='+k+']').value=v;
+  d.querySelector('#dialog-ok').onclick();assert.equal(donnees.achats_pro.length,1);assert.equal(donnees.achats_pro[0].lignes.length,2);assert.equal(donnees.achats_pro[0].paiements[0].montant,58000);assert.equal(donnees.journal.filter(j=>j.achatId).length,1);checks+=4;
+  evalJS('administratifEcran()');assert.ok(doc.getElementById('pro-preparer'));assert.ok(doc.getElementById('pro-profil'));checks+=2;
+ }else{assert.throws(()=>evalJS('financesEcran()'),/administrateur/);assert.throws(()=>evalJS('licenceEcran()'),/administrateur/);checks+=2;}
  for(const methode of ['clients','catalogue','devis','aide'])evalJS('interfaceMobile.'+methode+'()');assert.doesNotMatch(doc.getElementById('message').textContent,/impossible|invalide/i);checks++;
 }
 console.log(checks+' contrôles DOM réussis (interface et pont Android simulés ; pas de rendu sur téléphone).');

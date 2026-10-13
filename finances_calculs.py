@@ -60,6 +60,7 @@ def evenements(lignes,total,paiements,date_facture,date_livraison):
 def synthese(debut,fin,documents,achats,regime,credit=0,corrections=()):
     jour(debut);jour(fin);entier(credit)
     if fin<debut: raise ValueError('Période inversée.')
+    if regime not in ('','franchise','reel'):raise ValueError('Régime TVA invalide.')
     groupes={};alertes=[];exigible=deductible=percue=0;deduction_immobilisation=0
     def ligne(taux):
         return groupes.setdefault(taux,{'taux':taux,'base_exigible':0,'tva_exigible':0,'tva_percue':0,'base_achats':0,'tva_achats':0,'tva_deductible':0})

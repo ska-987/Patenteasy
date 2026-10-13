@@ -37,6 +37,14 @@ final class FinancesPro {
    for(int i=0;i<ps.length();i++)Droits.egal(ps.get(i),ns.get(i));
   }
   Map<String,JSONObject> oldops=Droits.index(vide(avant,"journal"));for(JSONObject op:oldops.values())if(op.has("achatId")){JSONObject n=ops.get(op.getString("id"));if(n==null)throw new SecurityException("Suppression de règlement interdite.");Droits.egal(op,n);}
+  JSONArray corrections=vide(apres,"ajustements_pro");Set<String> correctionIds=new HashSet<>();
+  for(int i=0;i<corrections.length();i++){JSONObject a=corrections.getJSONObject(i);jour(a.getString("date"));Object m=a.get("montant");if(!(m instanceof Integer||m instanceof Long)||Math.abs(((Number)m).longValue())>9000000000000L||a.getString("motif").trim().isEmpty()||!correctionIds.add(a.getString("id")))throw new IllegalArgumentException("Régularisation invalide.");}
+  JSONObject administratif=objet(apres,"administratif_pro");JSONArray dossiers=vide(administratif,"dossiers");Set<String> dossierIds=new HashSet<>();
+  for(int i=0;i<dossiers.length();i++){JSONObject a=dossiers.getJSONObject(i);if(!dossierIds.add(a.getString("id")))throw new IllegalArgumentException("Dossier en double.");jour(a.getString("debut"));jour(a.getString("fin"));jour(a.getString("echeance"));String statut=a.getString("statut");if(!Arrays.asList("a_verifier","depose","paye").contains(statut)||!statut.equals("a_verifier")&&a.optString("preuve").trim().isEmpty())throw new IllegalArgumentException("État ou preuve de dossier invalide.");}
+  Map<String,JSONObject> nouveauxDossiers=Droits.index(dossiers);
+  for(JSONObject a:Droits.index(vide(objet(avant,"administratif_pro"),"dossiers")).values()){
+   JSONObject n=nouveauxDossiers.get(a.getString("id"));if(n==null)throw new SecurityException("Suppression de dossier interdit.");for(String k:new String[]{"genre","debut","fin","echeance","source","entreprise","profil","tva","manquants"})Droits.egal(a.opt(k),n.opt(k));
+  }
   JSONObject qualifications=objet(apres,"qualifications_pro");Iterator<String> it=qualifications.keys();Map<String,JSONObject> facts=Droits.index(apres.getJSONArray("factures"));while(it.hasNext()){
    String id=it.next();JSONObject q=qualifications.getJSONObject(id),f=facts.get(id);if(f==null||!"facture".equals(f.getString("type")))throw new IllegalArgumentException("Facture à qualifier introuvable.");
    JSONArray ns=q.getJSONArray("natures");if(ns.length()!=f.getJSONObject("instantane").getJSONArray("lignes").length())throw new IllegalArgumentException("Qualifiez toutes les lignes.");
