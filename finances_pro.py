@@ -120,11 +120,13 @@ class FinancesPro:
                 incomplet='' if q else 'Facture '+d['numero']+' : nature et date de livraison à confirmer.'
                 documents.append({'date':d['date_document'],'ttc':s['ttc'],'lignes':lignes,'paiements':paiements,'livraison':q.get('livraison',''),'incomplet':incomplet})
             anciens=c.execute("SELECT COUNT(*) FROM operations o WHERE o.type_operation='depense' AND o.date_operation BETWEEN ? AND ? AND NOT EXISTS(SELECT 1 FROM paiements_achats_pro p WHERE p.operation_id=o.id) AND NOT EXISTS(SELECT 1 FROM remboursements r WHERE r.operation_id=o.id)",(debut,fin)).fetchone()[0]
+            recettes_non_detaillees=c.execute("SELECT COUNT(*) FROM operations o WHERE o.type_operation='recette' AND o.date_operation BETWEEN ? AND ? AND NOT EXISTS(SELECT 1 FROM paiements p WHERE p.operation_id=o.id)",(debut,fin)).fetchone()[0]
         achats=self.achats()
         for a in achats:
             if any(l['tva'] and l['deduction'] for l in a['lignes']) and not a.get('justificatif'):
                 a['incomplet']='Achat '+a['reference']+' : TVA exclue de la déduction, justificatif manquant.'
         result=synthese(debut,fin,documents,achats,regime,credit,corrections)
+        if recettes_non_detaillees:avertissements.append(str(recettes_non_detaillees)+' recette(s) hors encaissement de facture : TVA à vérifier et régulariser si nécessaire.')
         if anciens:avertissements.append(str(anciens)+' ancienne(s) dépense(s) sans détail HT/TVA : à rapprocher avant déclaration.')
         result['alertes']=list(dict.fromkeys(result['alertes']+avertissements));result['depenses_non_detaillees']=anciens
         return result

@@ -76,7 +76,7 @@ def synthese(debut,fin,documents,achats,regime,credit=0,corrections=()):
             if debut<=e['date']<=fin and regime=='reel':ligne(e['taux'])['tva_percue']+=e['tva'];percue+=e['tva']
     for achat in achats:
         if achat.get('incomplet'):alertes.append(achat['incomplet'])
-        for e in evenements(achat['lignes'],achat['ttc'],achat['paiements'],achat['date'],achat.get('livraison','')):
+        for e in evenements(achat['lignes'],achat['ttc'],achat['paiements'],achat['date'],max(achat['date'],achat['livraison']) if achat.get('livraison') else ''):
             if not debut<=e['date']<=fin:continue
             gr=ligne(e['taux']);gr['base_achats']+=e['ht'];gr['tva_achats']+=e['tva']
             deduction=e['deduction_delta'] if regime=='reel' and achat.get('justificatif') else 0

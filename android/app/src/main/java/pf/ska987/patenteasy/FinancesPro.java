@@ -87,11 +87,12 @@ final class FinancesPro {
   for(int i=0;i<achats.length();i++){
    JSONObject a=achats.getJSONObject(i);JSONArray ls=a.getJSONArray("lignes"),ps=a.getJSONArray("paiements");for(int n=0;n<ps.length();n++)liens.add(ps.getJSONObject(n).getString("journalId"));
    if(!a.optBoolean("justificatif"))alertes.put("Achat "+a.getString("reference")+" : justificatif manquant, déduction exclue.");
-   for(JSONObject e:evenements(ls,total(ls,"ttc"),ps,a.getString("date"),a.optString("livraison")))if(periode(e.getString("date"),debut,fin)){
+   for(JSONObject e:evenements(ls,total(ls,"ttc"),ps,a.getString("date"),a.optString("livraison").isEmpty()?"":(a.getString("date").compareTo(a.getString("livraison"))>0?a.getString("date"):a.getString("livraison"))))if(periode(e.getString("date"),debut,fin)){
     JSONObject g=groupe(gs,e.getLong("taux"));ajouter(g,"base_achats",e.getLong("ht"));ajouter(g,"tva_achats",e.getLong("tva"));long ded=reel&&a.optBoolean("justificatif")?e.getLong("deduction"):0;ajouter(g,"tva_deductible",ded);deductible+=ded;if("immobilisation".equals(e.getString("categorie")))immob+=ded;
    }
   }
-  long anciens=0,recettes=0,depenses=0;JSONArray ops=d.getJSONArray("journal");for(int i=0;i<ops.length();i++){JSONObject op=ops.getJSONObject(i);if(!periode(op.getString("date"),debut,fin))continue;if("recette".equals(op.getString("type")))recettes+=op.getLong("montant");else {depenses+=op.getLong("montant");if(!liens.contains(op.getString("id"))&&!op.has("remboursementId"))anciens++;}}
+  long anciens=0,recettes=0,depenses=0,recettesManuelles=0;JSONArray ops=d.getJSONArray("journal");for(int i=0;i<ops.length();i++){JSONObject op=ops.getJSONObject(i);if(!periode(op.getString("date"),debut,fin))continue;if("recette".equals(op.getString("type"))){recettes+=op.getLong("montant");if(!op.has("factureId"))recettesManuelles++;}else {depenses+=op.getLong("montant");if(!liens.contains(op.getString("id"))&&!op.has("remboursementId"))anciens++;}}
+  if(recettesManuelles>0)alertes.put(recettesManuelles+" recette(s) hors facture : TVA à vérifier / régulariser.");
   if(anciens>0)alertes.put(anciens+" dépense(s) sans détail HT / TVA : à rapprocher.");if(regime.isEmpty())alertes.put("Régime TVA de la période à confirmer.");
   long ajust=0;JSONArray corrections=vide(d,"ajustements_pro");for(int i=0;i<corrections.length();i++){JSONObject a=corrections.getJSONObject(i);if(periode(a.getString("date"),debut,fin))ajust+=a.getLong("montant");}
   long net=reel?exigible-deductible-credit+ajust:0;JSONArray taux=new JSONArray();for(JSONObject g:gs.values())taux.put(g);

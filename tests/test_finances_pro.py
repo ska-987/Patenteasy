@@ -123,3 +123,8 @@ def test_rapprochement_et_part_deductible(service):
     assert s.calculer('2026-10-01','2026-10-31','reel')['tva_deductible']==400
     with db.base.session() as c:assert c.execute('SELECT COUNT(*) FROM operations').fetchone()[0]==1
     with pytest.raises(ValueError):s.ajouter_achat(achat,operation_existante=op)
+
+def test_facture_fournisseur_necessaire_avant_deduction():
+    a={'date':'2026-11-01','livraison':'2026-10-01','ttc':11600,'justificatif':True,'paiements':[],'lignes':lignes_valides([{'ht':10000,'taux':1600,'nature':'bien'}])}
+    assert synthese('2026-10-01','2026-10-31',[],[a],'reel')['tva_deductible']==0
+    assert synthese('2026-11-01','2026-11-30',[],[a],'reel')['tva_deductible']==1600
