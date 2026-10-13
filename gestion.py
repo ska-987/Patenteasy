@@ -82,6 +82,9 @@ class GestionDocuments:
             date_mouvement TEXT NOT NULL, quantite_centiemes INTEGER NOT NULL,
             motif TEXT NOT NULL)""")
 
+        from finances_pro import migrer
+        migrer(self.base)
+
     def liste(self, sql, params=()):
         c = sqlite3.connect(self.base.chemin)
         c.row_factory = sqlite3.Row

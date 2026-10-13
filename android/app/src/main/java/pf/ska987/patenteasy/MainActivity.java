@@ -25,7 +25,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle b){
         super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);
         preferences=getSharedPreferences("patenteasy_local",MODE_PRIVATE);
-        try{coffre=new Coffre(this);sauvegardes=new Sauvegardes(this,coffre);updates=new MisesAJour(this,coffre,sauvegardes,new JSONObject(configuration()));connexion=new Connexion(this,coffre,travail);exportPdf=new ExportPdf(this,coffre,preferences,this::message);}catch(Exception e){new AlertDialog.Builder(this).setTitle("Coffre inaccessible").setMessage("Aucune donnée n’a été effacée. Contactez sav.centreprotech@proton.me.").setPositiveButton("Fermer",(x,y)->finish()).show();return;}
+        try{coffre=new Coffre(this);try(InputStream in=getAssets().open("licence_editeur.json")){coffre.configurerLicence(new JSONObject(new String(Coffre.lire(in,100000),java.nio.charset.StandardCharsets.UTF_8)).optString("cle_publique_ed25519"));}sauvegardes=new Sauvegardes(this,coffre);updates=new MisesAJour(this,coffre,sauvegardes,new JSONObject(configuration()));connexion=new Connexion(this,coffre,travail);exportPdf=new ExportPdf(this,coffre,preferences,this::message);}catch(Exception e){new AlertDialog.Builder(this).setTitle("Coffre inaccessible").setMessage("Aucune donnée n’a été effacée. Contactez sav.centreprotech@proton.me.").setPositiveButton("Fermer",(x,y)->finish()).show();return;}
         web=new WebView(this);web.setOnApplyWindowInsetsListener((v,insets)->{v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;});setContentView(web,new ViewGroup.LayoutParams(-1,-1));
         WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(false);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setAllowFileAccessFromFileURLs(false);settings.setAllowUniversalAccessFromFileURLs(false);settings.setBlockNetworkLoads(true);web.addJavascriptInterface(new PontLocal(),"Android");web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient(){
@@ -61,6 +61,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean bienvenueVue(){return preferences.getBoolean("participation_beta_vue",false);}
         @JavascriptInterface public boolean marquerBienvenue(){return preferences.edit().putBoolean("participation_beta_vue",true).commit();}
         @JavascriptInterface public String configuration(){return MainActivity.this.configuration();}
+        @JavascriptInterface public String licenceEtat(){return resultat(()->coffre.licenceEtat());}
+        @JavascriptInterface public String importerLicence(String texte){return resultat(()->coffre.importerLicence(texte));}
+        @JavascriptInterface public String preparerAdministratif(String genre,String debut,String fin,String echeance,String source,String regime,long credit){return resultat(()->coffre.preparerAdministratif(genre,debut,fin,echeance,source,regime,credit));}
+        @JavascriptInterface public String preparationPdf(String id){return resultat(()->coffre.preparationPdf(id));}
+        @JavascriptInterface public String finances(String debut,String fin,String regime,long credit){return resultat(()->{coffre.exigerPro("finance_tva");return FinancesPro.calculer(new JSONObject(coffre.charger()),debut,fin,regime,credit);});}
+        @JavascriptInterface public String verifierDroit(String module){return resultat(()->{coffre.exigerPro(module);return true;});}
         @JavascriptInterface public String comptes(){return resultat(()->new JSONArray(coffre.listeComptes()));}
         @JavascriptInterface public String creerCompte(String id,String mot){return resultat(()->{coffre.creerUtilisateur(id,mot);return true;});}
         @JavascriptInterface public String activer(String id,boolean actif){return resultat(()->{coffre.actif(id,actif);return true;});}

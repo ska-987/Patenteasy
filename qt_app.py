@@ -884,6 +884,10 @@ class DashboardPage(Page):
         actions.addStretch()
         self.layout.addLayout(actions)
         metrics = QGridLayout()
+        self.finance_annuelle = QLabel("Finances et TVA : licence annuelle requise.")
+        self.finance_annuelle.setWordWrap(True)
+        self.layout.addWidget(self.finance_annuelle)
+        self.layout.addWidget(button("Ouvrir les finances et la TVA", lambda:self.navigate.emit("finances_pro"),secondary=True))
         self.m_recettes = MetricCard(tr("Recettes enregistrées cette année"))
         self.m_depenses = MetricCard(tr("Dépenses enregistrées"))
         self.m_restant = MetricCard(tr("Reste à encaisser"))
@@ -929,6 +933,15 @@ class DashboardPage(Page):
 
     def refresh(self):
         e = db.obtenir_entreprise() or {}
+        from finances_pro import FinancesPro
+        pro=FinancesPro()
+        try:
+            etat=pro.licence.etat()
+            if etat['active'] and 'finance_tva' in etat['modules']:
+                aujourdhui=g.aujourd_hui().isoformat();r=pro.calculer(aujourdhui[:8]+'01',aujourdhui,(db.obtenir_fiscalite_annuelle(g.aujourd_hui().year) or {}).get('regime_confirme',''),0)
+                self.finance_annuelle.setText('Mois en cours • TVA perçue : '+money_text(r['tva_percue'])+' • TVA déductible : '+money_text(r['tva_deductible'])+' • À reverser : '+money_text(r['a_reverser'])+'\nConfirmez le régime de la période et le crédit antérieur dans Finances.')
+            else:self.finance_annuelle.setText('Finances et TVA • '+etat['message'])
+        except Exception as erreur:self.finance_annuelle.setText(str(erreur))
         current_year = g.aujourd_hui().year
         summary = db.obtenir_resume_annuel(current_year)
         docs = g.documents()
@@ -960,7 +973,12 @@ class DashboardPage(Page):
         self.m_treso.value.setText(fcfp(treasury) if treasury is not None else tr("À initialiser"))
         fill_table(self.unpaid, unpaid,unpaid_ids)
         reminders = g.liste("SELECT * FROM rappels WHERE fait=0 ORDER BY echeance LIMIT 8")
-        fill_table(self.reminders, [[x["echeance"], x["titre"]] for x in reminders])
+        lignes_rappels=[[x["echeance"],x["titre"]] for x in reminders]
+        try:
+            if etat['active'] and 'administratif' in etat['modules']:
+                lignes_rappels += [[r['echeance'],'Préparation '+r['genre']+(' • EN RETARD' if r['jours']<0 else '')] for r in pro.rappels()]
+        except PermissionError:pass
+        fill_table(self.reminders,lignes_rappels)
         quotes = db.lister_devis()[:6]
         fill_table(self.quotes, [[f'#{x["id"]}', x["nom_client"], x["objet"], x["statut"]] for x in quotes], [x["id"] for x in quotes])
         alerts = list(summary.get("alertes", []))
@@ -1510,6 +1528,7 @@ class JournalPage(Page):
         super().__init__(tr("Trésorerie"), tr("Recettes et dépenses"), tr("Notez vos recettes et vos dépenses."), parent)
         top=QHBoxLayout(); self.year=QSpinBox(); self.year.setRange(1900, 9999); self.year.setValue(g.aujourd_hui().year); self.year.valueChanged.connect(self.refresh)
         top.addWidget(QLabel(tr("Année")));top.addWidget(self.year);top.addWidget(button(tr("Ajouter une opération"),self.add));top.addWidget(button(tr("Modifier"),self.edit,secondary=True));top.addWidget(button(tr("Supprimer"),self.delete,danger=True));top.addWidget(button(tr("Exporter CSV"),self.exporter_csv,secondary=True));top.addStretch();self.layout.addLayout(top)
+        self.layout.addWidget(button("Dépenses détaillées HT / TVA / TTC • licence annuelle",lambda:self.navigate.emit("finances_pro"),secondary=True))
         metrics=QHBoxLayout();self.rec=MetricCard(tr("Recettes"));self.dep=MetricCard(tr("Dépenses"));self.diff=MetricCard(tr("Différence"))
         for m in [self.rec,self.dep,self.diff]:metrics.addWidget(m)
         self.layout.addLayout(metrics)
@@ -1527,7 +1546,7 @@ class JournalPage(Page):
             except Exception as exc:show_error(self,exc)
 
     def _protected(self,ident):
-        return bool(g.liste('SELECT id FROM paiements WHERE operation_id=?',(ident,)) or g.liste('SELECT id FROM remboursements WHERE operation_id=?',(ident,)))
+        return bool(g.liste('SELECT id FROM paiements WHERE operation_id=?',(ident,)) or g.liste('SELECT id FROM remboursements WHERE operation_id=?',(ident,)) or g.liste('SELECT id FROM paiements_achats_pro WHERE operation_id=?',(ident,)))
 
     def edit(self):
         ident=selected_id(self.table)
@@ -2170,6 +2189,9 @@ class MainWindow(QMainWindow):
         specs=[
             ("dashboard",tr("Tableau de bord"),DashboardPage),("clients",tr("Clients"),ClientsPage),("articles",tr("Catalogue"),ArticlesPage),("devis",tr("Devis"),QuotesPage),("factures",tr("Factures & avoirs"),InvoicesPage),("journal",tr("Recettes & dépenses"),JournalPage),("stock",tr("Stock"),StockPage),("echeances",tr("Échéances"),RemindersPage),("entreprise",tr("Mon entreprise"),CompanyPage),("reprise",tr("Reprise de données"),RecoveryPage),("fiscalite",tr("Taxe et CA"),FiscalPage),("reglages",tr("Réglages"),SettingsPage),("updates",tr("Mises à jour"),UpdatesPage),("help",tr("Aide & contact"),HelpPage),
         ]
+        from finances_ui import LicencePage, FinancesPage, AdministratifPage
+        if est_admin(self):
+            specs.extend([("licence", "Licence annuelle", LicencePage),("finances_pro", "Finances et TVA", FinancesPage),("administratif_pro", "Préparation administrative", AdministratifPage)])
         specs.extend([("preferences", tr("Mes préférences"), PreferencesPage)])
         if est_admin(self):
             specs.append(("comptes", tr("Comptes utilisateurs"), ComptesPage))

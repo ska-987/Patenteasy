@@ -123,6 +123,27 @@ def verifier(rapport):
                 assert exports_pdf.choisir_dossier(facture_ui) == exporte.parent
             finally:
                 exports_pdf.preferences, QStandardPaths.writableLocation, QMessageBox.exec, QFileDialog.exec = originales
+            from finances_ui import LicencePage, FinancesPage, AdministratifPage
+            from finances_pro import FinancesPro
+            for cls in (LicencePage,FinancesPage,AdministratifPage):
+                page_pro=cls();page_pro.refresh();page_pro.show();app.processEvents();page_pro.close();page_pro.deleteLater()
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+            from cryptography.hazmat.primitives.serialization import Encoding,PublicFormat
+            from licences_pro import LicencePro,verifier as verifier_licence
+            from datetime import datetime,timezone,timedelta
+            import base64
+            cle_test=Ed25519PrivateKey.generate();maintenant=datetime.now(timezone.utc)
+            payload={'schema':'ska-license-v1','app_id':'patenteasy','license_id':'TEST','customer_id':'TEST','customer_name':'Atelier test','features':['finance_tva','administratif'],'limits':{'employees':1,'sites':1},'issued_at':maintenant.isoformat(),'not_before':maintenant.isoformat(),'expires_at':(maintenant+timedelta(days=365)).isoformat()}
+            licence_test={'payload':payload,'signature':base64.urlsafe_b64encode(cle_test.sign(json.dumps(payload,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode())).decode().rstrip('=')}
+            cle_publique=base64.b64encode(cle_test.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw)).decode()
+            service=FinancesPro(db.base,LicencePro(db.base,config={'cle_publique_ed25519':cle_publique},autoriser=lambda:None))
+            service.licence.importer(json.dumps(licence_test));assert service.licence.etat()['active']
+            service.qualifier(facture,['service'])
+            achat=service.ajouter_achat({'date':jour,'livraison':'','fournisseur':'Test','reference':'ACH-TEST','justificatif':True,'lignes':[{'ht':10000,'taux':1600,'nature':'service'}]},5800,jour)
+            service.payer_achat(achat,jour,5800);assert service.achats()[0]['reste']==0
+            assert service.calculer(jour,jour,'franchise')['tva_deductible']==0
+            assert service.calculer(jour,jour,'reel')['tva_deductible']==1600
+            assert not verifier_licence(licence_test,cle_publique,'Atelier test',maintenant=maintenant+timedelta(days=365))['active']
             autre = g.dupliquer_devis(devis)
             ecrans = [FiscalPage(), SettingsPage(), QuoteEditorDialog(autre), facture_ui]
             from PySide6.QtWidgets import QTextEdit
@@ -167,6 +188,7 @@ def verifier(rapport):
             resultat = {'ok': True, 'version': VERSION, 'qt': True, 'chiffrement': True,
                         'pdf': True, 'apercu_pdf': True, 'taxe': True, 'documents': True,
                         'profil_general': True, 'sauvegarde_nouveau_pc': True, 'ouverture_facture': True,
+                        'module_annuel':True,'signature_licence':True,'expiration_licence':True,'achats_partiels':True,'franchise_sans_deduction':True,
                         'exports_pdf_bureau': True, 'conditions_reglages': True,
                         'conditions_documents_existants': True, 'conditions_enregistrement_auto': True,
                         'conditions_affichees_facture': True, 'nouveau_client_depuis_devis': True}

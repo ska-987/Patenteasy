@@ -689,6 +689,8 @@ class BaseDonnees:
         if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
             raise PermissionError('Action réservée à l’administrateur.')
         with self.session() as connexion:
+            if connexion.execute("SELECT 1 FROM sqlite_master WHERE name='paiements_achats_pro'").fetchone() and connexion.execute('SELECT 1 FROM paiements_achats_pro WHERE operation_id=?',(operation_id,)).fetchone():
+                raise ValueError('Règlement fournisseur lié à un achat : correction dans le module financier.')
             curseur = connexion.execute('DELETE FROM operations WHERE id = ?', (operation_id,))
             if curseur.rowcount == 0:
                 raise ValueError('Opération introuvable.')
@@ -723,6 +725,8 @@ class BaseDonnees:
         if fin_reprise and jour <= date.fromisoformat(fin_reprise):
             raise ValueError('Cette date appartient à la période reprise. Corrigez les montants dans la reprise mensuelle.')
         with self.session() as connexion:
+            if connexion.execute("SELECT 1 FROM sqlite_master WHERE name='paiements_achats_pro'").fetchone() and connexion.execute('SELECT 1 FROM paiements_achats_pro WHERE operation_id=?',(operation_id,)).fetchone():
+                raise ValueError('Règlement fournisseur lié à un achat : correction dans le module financier.')
             curseur = connexion.execute("""
             UPDATE operations
             SET date_operation = ?,

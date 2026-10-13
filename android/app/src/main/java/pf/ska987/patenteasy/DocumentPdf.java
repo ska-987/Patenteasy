@@ -22,6 +22,7 @@ final class DocumentPdf {
         if(Build.VERSION.SDK_INT>=28)b.setUseLineSpacingFromFallbacks(true);return b.build();
     }
     static void produire(String donnees,OutputStream flux)throws Exception {
+        JSONObject controle=new JSONObject(donnees);if("Preparation".equals(controle.optString("type"))){preparation(controle.getJSONObject("dossier"),flux);return;}
         JSONObject enveloppe=new JSONObject(donnees),s=enveloppe.getJSONObject("document"),e=s.getJSONObject("entreprise"),c=s.getJSONObject("client");
         String type=enveloppe.getString("type"),numero=s.getString("numero");if(!Arrays.asList("Devis","Facture","Avoir").contains(type))throw new IOException("Type de document invalide.");
         try(Pages p=new Pages(type+" "+numero)){
@@ -65,6 +66,20 @@ final class DocumentPdf {
                 }
                 if(contenu.length()>0){p.y+=16;p.bloc(contenu,9,false,true);}
             }
+            p.finir();p.document.writeTo(flux);
+        }
+    }
+    private static void preparation(JSONObject d,OutputStream flux)throws Exception {
+        JSONObject e=d.getJSONObject("entreprise"),s=d.getJSONObject("tva");try(Pages p=new Pages("Préparation administrative")){
+            p.bloc("Préparation administrative • "+d.getString("genre"),18,true,false);p.bloc("BROUILLON À VÉRIFIER • ne vaut pas déclaration déposée",12,true,false);
+            p.bloc(e.getString("nom"),13,true,false);p.bloc("Période : "+date(d.getString("debut"))+" au "+date(d.getString("fin")),11,false,false);
+            p.bloc("Échéance confirmée : "+date(d.getString("echeance")),11,false,false);p.bloc("Source : "+d.getString("source"),9,false,false);
+            p.bloc("DN CPS : "+d.getJSONObject("profil").optString("dn_cps","À compléter"),11,false,false);
+            for(String k:new String[]{"recettes_ttc","depenses_ttc","tva_percue","tva_exigible","tva_deductible","credit_precedent","regularisations","a_reverser","credit"})p.bloc(k.replace('_',' ')+" : "+monnaie(s.optLong(k),e),11,false,false);
+            p.bloc("Ventilation par taux",13,true,false);JSONArray taux=s.getJSONArray("taux");
+            for(int i=0;i<taux.length();i++){JSONObject t=taux.getJSONObject(i);p.bloc(nombre(t.getLong("taux"))+" % • HT exigible "+monnaie(t.getLong("base_exigible"),e)+" • TVA exigible "+monnaie(t.getLong("tva_exigible"),e)+" • TVA déductible "+monnaie(t.getLong("tva_deductible"),e),10,false,false);}
+            p.bloc("Informations et contrôles à compléter",13,true,false);JSONArray manque=d.getJSONArray("manquants");for(int i=0;i<manque.length();i++)p.bloc("• "+manque.getString(i),10,false,false);
+            p.bloc("Reporter les données vérifiées dans le formulaire officiel. Les encaissements TTC ne sont pas automatiquement le CA fiscal ni le revenu CPS.",10,false,false);
             p.finir();p.document.writeTo(flux);
         }
     }

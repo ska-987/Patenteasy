@@ -22,6 +22,7 @@ public final class Coffre {
     private byte[] cle;
     private String compte="";
     private long derniereAction;
+    private String publiquePro="";
     private int echecs;
     private long attendre;
     private static final int ITERATIONS=600000;
@@ -125,8 +126,45 @@ public final class Coffre {
     public synchronized boolean sauver(String s) throws Exception {
         exiger();JSONObject d=valider(s);String avant=contenu.getString("donnees");
         if(!"admin".equals(utilisateur().getString("role")))Droits.valider(avant,d);
+        JSONObject precedent=avant.isEmpty()?new JSONObject():new JSONObject(avant);
+        for(String k:new String[]{"achats_pro","qualifications_pro","ajustements_pro","administratif_pro"}) {
+            if(!Catalogue.canon(precedent.opt(k)).equals(Catalogue.canon(d.opt(k))))exigerPro(k.equals("administratif_pro")?"administratif":"finance_tva");
+        }
+        FinancesPro.valider(precedent,d);
         contenu.put("donnees",s);try{sauvegarder();return true;}catch(Exception e){contenu.put("donnees",avant);throw e;}
     }
+    synchronized void configurerLicence(String publique){publiquePro=publique;}
+    public synchronized JSONObject licenceEtat() throws Exception {
+        admin();JSONObject d=new JSONObject(charger());JSONObject entreprise=d.optJSONObject("entreprise");long now=System.currentTimeMillis();
+        JSONObject r=LicencePro.verifier(contenu.optString("licence_pro"),publiquePro,entreprise==null?"":entreprise.optString("nom"),now,ancien.getLong("licence_dernier",0));
+        if(r.getBoolean("active"))ancien.edit().putLong("licence_dernier",Math.max(now,ancien.getLong("licence_dernier",0))).commit();return r;
+    }
+    public synchronized JSONObject importerLicence(String texte) throws Exception {
+        admin();JSONObject d=new JSONObject(charger());JSONObject entreprise=d.optJSONObject("entreprise");
+        JSONObject r=LicencePro.verifier(texte,publiquePro,entreprise==null?"":entreprise.optString("nom"),System.currentTimeMillis(),ancien.getLong("licence_dernier",0));
+        if(!r.getBoolean("active"))throw new SecurityException(r.getString("message"));Object precedent=contenu.opt("licence_pro");contenu.put("licence_pro",texte);
+        try{sauvegarder();licenceEtat();return r;}catch(Exception e){if(precedent==null)contenu.remove("licence_pro");else contenu.put("licence_pro",precedent);throw e;}
+    }
+    public synchronized JSONObject preparerAdministratif(String genre,String debut,String fin,String echeance,String source,String regime,long credit) throws Exception {
+        exigerPro("administratif");exigerPro("finance_tva");
+        if(!Arrays.asList("tva1010","cps_rns","it","tpe","tva1040").contains(genre))throw new IllegalArgumentException("Document non pris en charge.");FinancesPro.jour(echeance);
+        if(!source.matches("https://(www\\.service-public\\.pf|www\\.cps\\.pf|wwwapi\\.cps\\.pf)/.*"))throw new IllegalArgumentException("Source officielle DICP / CPS requise.");
+        JSONObject d=new JSONObject(charger()),entreprise=d.getJSONObject("entreprise");if(!"PF".equals(entreprise.optString("pays"))||!"XPF".equals(entreprise.optString("devise")))throw new IllegalArgumentException("Profil Polynésie / XPF nécessaire.");
+        JSONObject admin=FinancesPro.objet(d,"administratif_pro"),profil=FinancesPro.objet(admin,"profil");
+        if("it".equals(genre)&&"tpe".equals(profil.optString("fiscal")))throw new IllegalArgumentException("TPE : dispense de déclaration IT annuelle ; vérifiez la démarche applicable.");
+        if(genre.startsWith("tva")&&!"reel".equals(regime))throw new IllegalArgumentException("Aucune déduction / déclaration TVA pour la franchise dans ce module.");
+        JSONObject calcul=FinancesPro.calculer(d,debut,fin,regime,credit);JSONArray manque=new JSONArray(calcul.getJSONArray("alertes").toString());
+        if("cps_rns".equals(genre)){manque.put("Confirmer les autres revenus / annexes CPS.");manque.put("Vérifier charges, cotisations RNS et option forfaitaire.");}
+        if("it".equals(genre)||"tpe".equals(genre))manque.put("Confirmer les recettes brutes HT et ventes / prestations ; encaissements TTC différents du CA fiscal.");
+        JSONObject dossier=new JSONObject().put("id",UUID.randomUUID().toString()).put("genre",genre).put("debut",debut).put("fin",fin).put("echeance",echeance).put("source",source).put("statut","a_verifier").put("preuve","").put("entreprise",entreprise).put("profil",profil).put("tva",calcul).put("manquants",manque);
+        JSONArray dossiers=FinancesPro.vide(admin,"dossiers");dossiers.put(dossier);admin.put("dossiers",dossiers).put("profil",profil);d.put("administratif_pro",admin);sauver(d.toString());return dossier;
+    }
+    public synchronized String preparationPdf(String id) throws Exception {
+        exigerPro("administratif");JSONObject d=new JSONObject(charger());JSONArray dossiers=FinancesPro.vide(FinancesPro.objet(d,"administratif_pro"),"dossiers");
+        for(int i=0;i<dossiers.length();i++)if(id.equals(dossiers.getJSONObject(i).getString("id")))return new JSONObject().put("type","Preparation").put("dossier",dossiers.getJSONObject(i)).toString();
+        throw new IllegalArgumentException("Dossier absent.");
+    }
+    public synchronized void exigerPro(String module) throws Exception {admin();LicencePro.exiger(licenceEtat(),module);}
     public synchronized String listeComptes() throws Exception {
         admin();JSONArray a=new JSONArray();Iterator<String> it=comptes().keys();while(it.hasNext()){String n=it.next();JSONObject u=comptes().getJSONObject(n);a.put(new JSONObject().put("identifiant",n).put("role",u.getString("role")).put("actif",u.getBoolean("actif")));}return a.toString();
     }

@@ -19,15 +19,15 @@ final class ExportPdf {
         if(!preferences.edit().putString("dossier_pdf",uri.toString()).commit())throw new IOException("Dossier non enregistré.");
     }
     void creer(String nom,String donnees)throws Exception {
-        coffre.exiger();if(enCours||fermee)throw new IOException("Terminez l’export en cours.");
+        coffre.exiger();final boolean preparation="Preparation".equals(new org.json.JSONObject(donnees).optString("type"));if(preparation)coffre.exigerPro("administratif");if(enCours||fermee)throw new IOException("Terminez l’export en cours.");
         if(donnees.length()>4000000||nom.length()>200)throw new IOException("Document trop volumineux.");
         final Uri dossier=Uri.parse(preferences.getString("dossier_pdf",""));final String fichier=nom.replaceAll("[^A-Za-z0-9._-]","_")+".pdf";
         enCours=true;travail.execute(()->{
             File temporaire=null;Uri cible=null;
             try {
                 temporaire=File.createTempFile("patenteasy-pdf-",".pdf",activity.getCacheDir());
-                try(OutputStream flux=new FileOutputStream(temporaire)){DocumentPdf.produire(donnees,flux);}
-                if(fermee||Thread.currentThread().isInterrupted())throw new IOException("Export annulé.");coffre.exiger();
+                try(OutputStream flux=new FileOutputStream(temporaire)){if(preparation)coffre.exigerPro("administratif");DocumentPdf.produire(donnees,flux);}
+                if(fermee||Thread.currentThread().isInterrupted())throw new IOException("Export annulé.");coffre.exiger();if(preparation)coffre.exigerPro("administratif");
                 Uri parent=DocumentsContract.buildDocumentUriUsingTree(dossier,DocumentsContract.getTreeDocumentId(dossier));
                 cible=DocumentsContract.createDocument(activity.getContentResolver(),parent,"application/pdf",fichier);if(cible==null)throw new IOException("Dossier inaccessible.");
                 try(InputStream in=new FileInputStream(temporaire);OutputStream out=activity.getContentResolver().openOutputStream(cible,"wt")){

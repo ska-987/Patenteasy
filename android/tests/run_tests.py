@@ -9,10 +9,15 @@ root=Path(__file__).resolve().parents[1]
 jar=Path(os.environ['PATENTEASY_TEST_JSON_JAR']);classpath=os.pathsep.join(map(str,[jar,root/'libs/eddsa-0.3.0.jar']))
 with tempfile.TemporaryDirectory() as d:
  sources=list((root/'tests/stubs').rglob('*.java'))+list((root/'tests/pf').rglob('*.java'))
- sources += [root/'app/src/main/java/pf/ska987/patenteasy'/n for n in ('Coffre.java','Droits.java','Catalogue.java','ExportCsv.java')]
+ sources += [root/'app/src/main/java/pf/ska987/patenteasy'/n for n in ('Coffre.java','Droits.java','Catalogue.java','ExportCsv.java','LicencePro.java','FinancesPro.java')]
  subprocess.run(['java','-m','jdk.compiler/com.sun.tools.javac.Main','-classpath',classpath,'-d',d,*map(str,sources)],check=True)
  subprocess.run(['java','-classpath',d+os.pathsep+classpath,'pf.ska987.patenteasy.TestsCoffre'],check=True)
 
  subprocess.run(['java','-classpath',d+os.pathsep+classpath,'pf.ska987.patenteasy.TestsCatalogue',str(root/'tests/fixtures')],check=True)
 
  subprocess.run(['java','-classpath',d+os.pathsep+classpath,'pf.ska987.patenteasy.TestsExportCsv'],check=True)
+
+ from fixture_pro import fixture
+ import json
+ fichier=Path(d)/'fixture-pro.json';fichier.write_text(json.dumps(fixture(),ensure_ascii=False),encoding='utf-8')
+ subprocess.run(['java','-classpath',d+os.pathsep+classpath,'pf.ska987.patenteasy.TestsPro',str(fichier)],check=True)
