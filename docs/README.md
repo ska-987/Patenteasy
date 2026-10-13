@@ -1,16 +1,10 @@
-# Documentation Patenteasy — bêta 0.4.1
+# Bienvenue dans l’aide de Patenteasy
 
-- [Installation Windows et Android](INSTALLATION.md)
-- [Nouveautés 0.4.1](NOUVEAUTES_0.4.1.md)
-- [Parcours de bêta-test 0.4.1](BETA_TEST_0.4.1.md)
-- [Publication et mises à jour automatiques](../distribution/PUBLICATION-0.4.1.md)
-- [Architecture Qt](ARCHITECTURE_QT.md)
-- [Compilation et tests Android](../android/COMPILER.md)
+Vous souhaitez commencer à utiliser Patenteasy ou retrouver une étape ?
 
-La version dans les sources est 0.4.1 pour les deux éditions. La publication nécessite les signatures originales et les accès R2. Consulter le [README principal](../README.md) pour l’état de livraison vérifié.
+- **[Télécharger l’application](https://drive.proton.me/urls/ZD87JFPW44#kdecNnhPndLG)** — choisissez Windows ou Android.
+- **[Guide utilisateur](GUIDE-UTILISATEUR.md)** — installation, premiers documents, sauvegardes et mises à jour.
+- **[Présentation de Patenteasy](../README.md)** — fonctionnalités gratuites et modules sous licence annuelle.
+- **[Contacter le support](mailto:sav.centreprotech@proton.me)** — une question ou un problème.
 
-## Historique
-
-Les [nouveautés 0.3.7](NOUVEAUTES_0.3.7.md) et le [parcours de test 0.3.7](BETA_TEST_0.3.7.md) restent disponibles comme documents historiques.
-
-Les licences des composants tiers restent à leur emplacement d’origine.
+Vous souhaitez contribuer au code ? La [documentation développeur](DEVELOPPEMENT.md) regroupe les consignes techniques.

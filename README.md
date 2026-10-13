@@ -1,43 +1,62 @@
-# Patenteasy — bêta 0.4.2
+# Patenteasy
+### Vos devis, vos factures et vos règlements, au même endroit.
 
-Gestion locale des clients, devis, factures et encaissements pour les indépendants et petites entreprises.
+Vous êtes indépendant, artisan ou à la tête d’une petite entreprise ? Patenteasy vous aide à préparer vos devis, facturer vos prestations et retrouver rapidement ce qui a été payé — et ce qu’il reste à encaisser.
 
-Développeur **ska_987** · GNU GPL v3 ou ultérieure · Windows 64 bits (PySide6/Qt) et Android 8 ou supérieur.
+**Disponible sur Windows et Android · Utilisable hors connexion · Fonctions essentielles gratuites**
 
-## Correctif des règlements partiels
+## Télécharger Patenteasy
 
-Les factures et leurs PDF affichent le total initial, les règlements reçus avec leur détail et le reste à régler. Les avoirs sont déduits. Chaque nouvel aperçu ou export utilise les paiements actuellement enregistrés, sans modifier les montants de la facture émise. Les PDF déjà sauvegardés doivent être réexportés.
+👉 **[Accéder aux téléchargements officiels](https://drive.proton.me/urls/ZD87JFPW44#kdecNnhPndLG)**
 
-Exemple : total 10 000, règlement reçu 3 000, reste à régler 7 000. Plusieurs paiements successifs sont cumulés ; le règlement complet affiche un solde nul.
+Choisissez l’installateur **Windows `.exe`** ou l’application **Android `.apk`**. Aucune compilation à faire.
 
-## Installation et distribution
+Vous utilisez déjà Patenteasy ? Ouvrez **« Vérifier les mises à jour »** dans l’application.
 
-Le workflow Windows et Android construit les installateurs et exécute les contrôles. La publication nécessite les clés originales et les accès configurés ; sans ces secrets, les constructions restent disponibles pour une publication depuis le PC éditeur.
+[Guide de démarrage](docs/GUIDE-UTILISATEUR.md) · [Besoin d’aide ?](mailto:sav.centreprotech@proton.me)
 
-La version distribuée fait référence dans [le catalogue signé Cloudflare](https://patenteasy-updates.sav-centreprotech.workers.dev/catalogue.json). Le code 0.4.2 dans ce dépôt ne signifie pas à lui seul que le catalogue est déjà publié.
+## Une gestion plus simple au quotidien
 
-- Windows : installer par-dessus la version existante. Python n’est pas nécessaire.
-- Android : installer l’APK signée avec le certificat original, sans désinstaller. Le versionCode passe à 11 pour permettre la mise à jour depuis 0.4.1.
+- **Préparez vos devis** avec vos clients, vos articles et vos prestations.
+- **Créez vos factures et avoirs**, puis exportez-les en PDF pour les transmettre.
+- **Suivez les règlements**, y compris les paiements partiels et le reste dû.
+- **Retrouvez vos clients et vos documents** sans chercher dans plusieurs dossiers.
+- **Tenez votre cahier de recettes et dépenses** pour garder une vue de votre activité.
+- **Sauvegardez vos données** et restaurez-les lorsque vous en avez besoin.
 
-Les sources, installateurs et instructions sont proposés par l’éditeur et dans les [releases](https://github.com/ska-987/Patenteasy/releases). Faire une sauvegarde avant installation.
+Sur Windows, Patenteasy propose aussi le suivi du stock et une interface adaptée au travail sur ordinateur.
 
-## Fonctionnement
+**Exemple :** une facture de 10 000 F CFP, un premier règlement de 3 000 F CFP : le document indique les règlements reçus et les 7 000 F CFP restant à payer.
 
-Clients, catalogue, devis, factures, encaissements, avoirs, recherches, PDF, comptes locaux, sauvegardes chiffrées et récupération. Windows comporte aussi stocks et suivi plus avancé. Les données Windows et Android restent locales et indépendantes : aucune synchronisation automatique.
+## Gratuit pour commencer, des modules pour aller plus loin
 
-Les conditions facultatives sont enregistrées dans Réglages et reprises lors des nouveaux exports. Le profil accepte pays et identifiants facultatifs, devise et précision monétaire ; aucune conversion des montants existants.
+Les clients, devis, factures, avoirs, règlements et la TVA sur les devis et factures font partie des fonctions gratuites.
 
-## Vérifications
+| Module sous licence annuelle | Ce qu’il apporte |
+| --- | --- |
+| **Finances et TVA** | Dépenses détaillées HT / TVA / TTC, plusieurs taux, calculs de TVA perçue, déductible et à reverser. En franchise en base, aucune TVA n’est déduite. |
+| **Préparation administrative** | Dossiers préparatoires à partir des données enregistrées, suivi des échéances et des dépôts. |
 
-Les tests couvrent paiements partiels successifs, règlement complet, avoirs, préservation de l’instantané émis, PDF Windows et données transmises au générateur PDF Android. Les contrôles DOM et Chromium utilisent un pont Android simulé ; l’installation et le PDF natif restent à confirmer sur téléphone réel.
+Les modules à débloquer sont signalés en **ambre**, avec un cadenas et la mention **« À débloquer »**. Ceux autorisés par votre licence passent en **vert**, avec la mention **« Activé »**.
 
-## Développement
+[Demander une licence annuelle](mailto:sav.centreprotech@proton.me?subject=Licence%20annuelle%20Patenteasy)
 
-```text
-INSTALLER.cmd
-LANCER.cmd
-python -m pytest -q tests
-node --test android/tests/mobile_model.test.cjs
-```
+Les dossiers administratifs vous aident à préparer votre démarche : ils restent à vérifier et à compléter. Ils ne remplacent pas les formulaires officiels et ne sont pas déposés automatiquement.
 
-Voir [la documentation](docs/README.md), [la compilation Android](android/COMPILER.md) et [la licence](LICENSE). Les clés privées, mots de passe, données clients et sauvegardes restent hors du dépôt.
+## Sur votre ordinateur ou votre téléphone
+
+**Windows 64 bits** et **Android 8 ou supérieur**.
+
+Vos données sont conservées sur votre appareil. Vous pouvez travailler sans connexion ; le téléchargement des mises à jour nécessite Internet. Les éditions Windows et Android fonctionnent indépendamment : leurs données ne se synchronisent pas automatiquement.
+
+Patenteasy est actuellement en **bêta**. Pensez à sauvegarder vos données avant une mise à jour.
+
+## Un projet indépendant
+
+Patenteasy est développé par **ska_987**. Une question, une difficulté ou une idée d’amélioration ?
+
+📩 **[sav.centreprotech@proton.me](mailto:sav.centreprotech@proton.me)**
+
+💛 [Soutenir le projet par un don](https://www.paypal.com/ncp/payment/A3ELC2Q8GM82N)
+
+Logiciel libre sous [GNU GPL v3 ou ultérieure](LICENSE).
