@@ -11,7 +11,7 @@ import traceback
 def verifier(rapport):
     resultat = {'ok': False}
     try:
-        with tempfile.TemporaryDirectory(prefix='patenteasy-verification-') as dossier:
+        with tempfile.TemporaryDirectory(prefix='patenteasy-verification-', ignore_cleanup_errors=True) as dossier:
             os.environ['PATENTEASY_DATA_DIR'] = dossier
             from PySide6.QtWidgets import QApplication
             from PySide6.QtCore import QCoreApplication, QEvent
@@ -193,6 +193,7 @@ def verifier(rapport):
                         'conditions_documents_existants': True, 'conditions_enregistrement_auto': True,
                         'conditions_affichees_facture': True, 'nouveau_client_depuis_devis': True}
     except Exception:
+        resultat['ok'] = False
         resultat['erreur'] = traceback.format_exc()
     Path(rapport).write_text(json.dumps(resultat, ensure_ascii=False, indent=2), encoding='utf-8')
     return 0 if resultat['ok'] else 1
