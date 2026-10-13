@@ -1,3 +1,7 @@
+# Patenteasy — bêta 0.4.3
+
+Module annuel SKA : dépenses HT/TVA/TTC, calculs TVA et dossiers administratifs préparatoires. Clé publique éditeur intégrée. La TVA sur factures reste gratuite. Publication signée après vérification des constructions.
+
 # Patenteasy — bêta 0.4.2
 
 Gestion locale des clients, devis, factures et encaissements pour les indépendants et petites entreprises.

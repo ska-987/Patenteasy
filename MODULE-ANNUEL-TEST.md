@@ -13,11 +13,9 @@ Développé par ska_987. Cette branche est une préparation à tester, sans nouv
 - Calcul TVA perçue, exigible, déductible, crédit précédent, régularisations, montant à reverser et crédit. Franchise : aucune déduction. Biens / services à qualifier ; les débits nécessitent une autorisation explicitement confirmée.
 - Dossiers préparatoires pour TVA 1010 / 1040, CPS RNS, IT et démarche TPE : données comptables et identité préremplies, export PDF de préparation, liste des informations manquantes, date vérifiée par l'administrateur, rappels et preuve de dépôt / paiement.
 
-## Activation réelle — élément manquant
+## Activation réelle
 
-La clé publique personnelle de l'éditeur n'a pas été fournie. `licence_editeur.json` contient volontairement une clé vide : les modules restent verrouillés dans les lanceurs livrés.
-
-Fournir uniquement le fichier **public_key.pem** du SKA License Manager. Ne jamais fournir la clé privée ni son mot de passe. La clé publique sera épinglée dans les deux applications avant la construction activable. Aucun utilisateur ne peut désigner sa propre clé de confiance depuis l'interface.
+La clé publique Ed25519 personnelle de ska_987 est intégrée à Windows et Android. Les clés privées restent chez l’éditeur.
 
 Dans SKA License Manager, créer une licence pour `patenteasy`, avec le nom exact de l'entreprise, la durée annuelle souhaitée et les fonctionnalités `finance_tva,administratif`. Importer le fichier signé depuis Licence annuelle. Un renouvellement s'effectue en important la nouvelle licence signée.
 

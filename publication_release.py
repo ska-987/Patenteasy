@@ -18,7 +18,7 @@ CERTIFICAT_ANDROID = 'cfc8d95ee97be9a7a80eca28de72178d7e9cd01236dc8187c69ba1c60f
 def verifier_apk(dossier, manifeste_windows):
     dossier = Path(dossier)
     manifeste = json.loads((dossier / 'android-verifie.json').read_text(encoding='utf-8'))
-    if (manifeste['version'] != VERSION_ANDROID or manifeste['versionCode'] != 11
+    if (manifeste['version'] != VERSION_ANDROID or manifeste['versionCode'] != 12
             or manifeste['package'] != 'pf.ska987.patenteasy.local'
             or not manifeste.get('source') or manifeste['source'] != manifeste_windows.get('source')):
         raise ValueError('Les deux applications doivent provenir du même commit vérifié.')
@@ -81,10 +81,10 @@ def preparer(dossier):
     versions = {
         'windows': {'version': VERSION, 'url': serveur + '/fichiers/' + programme.name,
                     'sha256': h.hexdigest(), 'taille': taille, 'format': 'exe',
-                    'notes': 'Bêta 0.4.2 : règlements partiels, paiements reçus et reste à régler actualisés sur les factures et PDF.'},
+                    'notes': 'Bêta 0.4.3 : règlements partiels, paiements reçus et reste à régler actualisés sur les factures et PDF.'},
         'android': {'version': VERSION_ANDROID, 'url': serveur + '/fichiers/' + apk.name,
                     'sha256': empreinte_apk, 'taille': taille_apk, 'format': 'apk',
-                    'notes': 'Bêta 0.4.2 : paiements actualisés et reste à régler sur les factures et PDF.'}
+                    'notes': 'Bêta 0.4.3 : paiements actualisés et reste à régler sur les factures et PDF.'}
     }
     canonique = json.dumps(versions, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
     catalogue = {'versions': versions, 'signature': base64.b64encode(cle.sign(canonique)).decode('ascii')}
@@ -103,7 +103,7 @@ def lancer(dossier):
     try:
         catalogue = preparer(dossier)
         QMessageBox.information(None, 'Patenteasy — Publication',
-            f'Catalogue signé et vérifié :\n{catalogue}\n\nLes deux versions sont prêtes. Lancez Publier-0.4.2.cmd pour envoyer les applications et vérifier les téléchargements avant de publier le catalogue.\n\nLa clé privée reste sur votre ordinateur.')
+            f'Catalogue signé et vérifié :\n{catalogue}\n\nLes deux versions sont prêtes. Lancez Publier-0.4.3.cmd pour envoyer les applications et vérifier les téléchargements avant de publier le catalogue.\n\nLa clé privée reste sur votre ordinateur.')
         return 0
     except Exception as erreur:
         QMessageBox.critical(None, 'Patenteasy — Publication', str(erreur))

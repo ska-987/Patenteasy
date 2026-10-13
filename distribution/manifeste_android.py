@@ -14,9 +14,9 @@ apk=dossier/f'Patenteasy-Android-{VERSION_ANDROID}-A-SIGNER.apk'
 jar=dossier/'apksigner.jar'
 bt=Path(os.environ['ANDROID_SDK_ROOT'])/'build-tools/35.0.0'
 badging=subprocess.check_output([str(bt/'aapt'),'dump','badging',str(apk)],text=True)
-if f"versionName='{VERSION_ANDROID}'" not in badging or "name='pf.ska987.patenteasy.local'" not in badging or "versionCode='11'" not in badging:
+if f"versionName='{VERSION_ANDROID}'" not in badging or "name='pf.ska987.patenteasy.local'" not in badging or "versionCode='12'" not in badging:
     raise SystemExit('Identité Android incorrecte.')
-manifeste={'version':VERSION_ANDROID,'versionCode':11,'package':'pf.ska987.patenteasy.local',
+manifeste={'version':VERSION_ANDROID,'versionCode':12,'package':'pf.ska987.patenteasy.local',
            'source':os.environ.get('GITHUB_SHA',''), 'signature':'requise',
            'taille':apk.stat().st_size,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
            'apksigner_sha256':hashlib.sha256(jar.read_bytes()).hexdigest()}

@@ -1,3 +1,7 @@
+# Version 0.4.3 — 2026-10-13
+
+Module annuel, clé publique SKA intégrée, construction Windows complète et Android versionCode 12.
+
 # Changelog
 
 Toutes les modifications importantes de Patenteasy seront documentées dans ce fichier.
