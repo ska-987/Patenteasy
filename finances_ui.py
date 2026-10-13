@@ -34,7 +34,7 @@ def montant(texte):return db.base.convertir_montant(texte or '0')
 
 class ProPage(Page):
     def __init__(self,titre,parent,module):
-        super().__init__('Licence annuelle',titre,'Les données existantes restent dans votre coffre.',parent)
+        super().__init__('Module annuel',titre,('Dépenses détaillées HT / TVA / TTC et calculs de TVA par taux.' if module=='finance_tva' else 'Dossiers administratifs préparatoires et rappels des échéances.')+' Licence annuelle requise pour débloquer les actions.',parent)
         self.service=FinancesPro();self.module=module;self.titre_module=titre;self.etat=QLabel();self.etat.setWordWrap(True);self.layout.addWidget(self.etat)
         h=QHBoxLayout();bouton(h,'Ouvrir Licence',lambda:self.navigate.emit('licence'));bouton(h,'Demander une licence annuelle',lambda:QDesktopServices.openUrl(QUrl('mailto:sav.centreprotech@proton.me?subject=Licence%20annuelle%20Patenteasy')));self.layout.addLayout(h)
         self.actions_pro=[]

@@ -2,7 +2,7 @@
 'use strict';
 
 function badgePro(module,s){const actif=!!(s.active&&s.modules.includes(module));return {actif,texte:actif?'✓ Activé':'🔒 À débloquer',classe:actif?'pro-actif':'pro-verrouille'};}
-function actualiserNavigationPro(){if(!admin())return;const s=etatPro();for(const [key,module,titre] of [['finances_pro','finance_tva','Finances et TVA'],['administratif_pro','administratif','Administratif']]){const b=document.querySelector(`nav [data-page="${key}"]`);if(!b)continue;const badge=badgePro(module,s);b.classList.remove('pro-actif','pro-verrouille');b.classList.add(badge.classe);b.textContent=titre+' · '+badge.texte;b.setAttribute('aria-label',b.textContent);}}
+function actualiserNavigationPro(){if(!admin())return;const s=etatPro();for(const [key,module,titre] of [['finances_pro','finance_tva','Finances et TVA'],['administratif_pro','administratif','Administratif']]){const b=document.querySelector(`nav [data-page="${key}"]`);if(!b)continue;const badge=badgePro(module,s);b.classList.remove('pro-actif','pro-verrouille');b.classList.add(badge.classe);b.classList.toggle('active',page===key);b.textContent=titre+' · '+badge.texte;b.setAttribute('aria-label',b.textContent);}}
 
 function droitPro(module){exigerAdmin();return appel('verifierDroit',module);}
 function etatPro(){exigerAdmin();return native&&native.licenceEtat?appel('licenceEtat'):{active:false,modules:[],message:'La vérification de licence est disponible dans l’APK.'};}

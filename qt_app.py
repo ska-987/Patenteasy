@@ -341,20 +341,6 @@ class DateTableItem(QTableWidgetItem):
 
 class TableInteraction(QObject):
     """Désélection sans laisser de ligne courante utilisable par les actions."""
-    def rafraichir_modules(self):
-        if not getattr(self, 'modules_navigation', None):
-            return
-        from licences_pro import LicencePro
-        etat = LicencePro(db.base).etat()
-        for key, (item, badge) in self.modules_navigation.items():
-            titre, module = ('Finances et TVA', 'finance_tva') if key == 'finances_pro' else ('Préparation administrative', 'administratif')
-            marquer_module(badge, titre, module, etat)
-            item.setData(Qt.ItemDataRole.AccessibleTextRole, badge.accessibleName())
-        for key, attr, titre in [('dashboard', 'bouton_finances', 'Finances et TVA'), ('journal', 'bouton_depenses', 'Dépenses détaillées HT / TVA / TTC')]:
-            page = self.pages.get(key)
-            if page and hasattr(page, attr):
-                marquer_module(getattr(page, attr), titre, 'finance_tva', etat)
-
     def eventFilter(self, obj, event):
         if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
             return False
