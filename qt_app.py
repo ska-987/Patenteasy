@@ -1705,7 +1705,7 @@ class JournalPage(Page):
         filtres=QHBoxLayout();self.banque_filtre=QComboBox();self.recherche=QLineEdit();self.recherche.setPlaceholderText('Facture, référence de virement ou chèque…')
         filtres.addWidget(QLabel('Banque'));filtres.addWidget(self.banque_filtre);filtres.addWidget(self.recherche);self.layout.addLayout(filtres)
         self.banque_filtre.currentIndexChanged.connect(self.refresh);self.recherche.textChanged.connect(self.refresh)
-        self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr("Type"),tr("Montant"),'Banque']);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
+        self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr("Recettes"),tr("Dépenses"),'Banque']);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
         legende_statuts(self.layout,"Vert : recette · Rouge : dépense")
 
     def refresh(self,*_):
@@ -1719,9 +1719,14 @@ class JournalPage(Page):
         self.banque_filtre.setCurrentIndex(max(0,self.banque_filtre.findData(choisie)));self.banque_filtre.blockSignals(False)
         needle=self.recherche.text().casefold()
         rows=[x for x in rows if (not choisie or x.get('banque','')==choisie) and needle in (x['libelle']+' '+x.get('banque','')).casefold()]
-        fill_table(self.table,[[x["date_operation"],x["libelle"],x["type_operation"],fcfp(x["montant_centiemes"]),x.get('banque','')] for x in rows],[x["id"] for x in rows])
+        fill_table(self.table,[[x["date_operation"],x["libelle"],fcfp(x["montant_centiemes"]) if x["type_operation"]=="recette" else "",fcfp(x["montant_centiemes"]) if x["type_operation"]=="depense" else "",x.get('banque','')] for x in rows],[x["id"] for x in rows])
         statuts={x["id"]:dict(code="vert" if x["type_operation"]=="recette" else "rouge",libelle="Recette" if x["type_operation"]=="recette" else "Dépense",detail=x["libelle"]) for x in rows}
         colorer_statuts(self.table,2,statuts)
+        for ligne in range(self.table.rowCount()):
+            for colonne in (2,3):
+                item=self.table.item(ligne,colonne)
+                if item is not None:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
     def add(self):
         d=OperationDialog(parent=self)
