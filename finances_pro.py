@@ -2,6 +2,7 @@
 """Achats et préparations fiscales dans la base chiffrée existante."""
 import json
 from datetime import date
+from calendar import monthrange
 import database as db
 import gestion as g
 from licences_pro import LicencePro
@@ -131,9 +132,29 @@ class FinancesPro:
         result=synthese(debut,fin,documents,achats,regime,credit,corrections)
         if recettes_non_detaillees:avertissements.append(str(recettes_non_detaillees)+' recette(s) hors encaissement de facture : TVA à vérifier et régulariser si nécessaire.')
         if anciens:avertissements.append(str(anciens)+' ancienne(s) dépense(s) sans détail HT/TVA : à rapprocher avant déclaration.')
-        with self.base.session() as c:
-            totaux={r['type_operation']:r['total'] for r in c.execute('SELECT type_operation,SUM(montant_centiemes) AS total FROM operations WHERE date_operation BETWEEN ? AND ? GROUP BY type_operation',(debut,fin))}
-        result['recettes_ttc']=totaux.get('recette',0);result['depenses_ttc']=totaux.get('depense',0)
+        totaux={'recette':0,'depense':0};alertes_tresorerie=[]
+        entreprise=self.base.obtenir_entreprise() or {};debut_activite=entreprise.get('date_debut_activite','')
+        for annee in range(int(debut[:4]),int(fin[:4])+1):
+            fiscal=self.base.obtenir_fiscalite_annuelle(annee) or {};fin_reprise=fiscal.get('date_fin_reprise','')
+            for op in self.base.lister_operations(annee):
+                if debut<=op['date_operation']<=fin:
+                    if fin_reprise and op['date_operation']<=fin_reprise:
+                        alertes_tresorerie.append('Des opérations du journal incluses dans la reprise sont exclues pour éviter un double compte.');continue
+                    totaux[op['type_operation']]+=op['montant_centiemes']
+            reprises=self.base.lister_reprise_mensuelle(annee)
+            if reprises and (not fin_reprise or not debut_activite):
+                alertes_tresorerie.append('Reprise exclue : renseignez le début d’activité et la date de fin de reprise.');continue
+            for ligne in reprises:
+                premier=f"{annee:04d}-{ligne['mois']:02d}-01"
+                dernier=f"{annee:04d}-{ligne['mois']:02d}-{monthrange(annee,ligne['mois'])[1]:02d}"
+                premier=max(premier,debut_activite);dernier=min(dernier,fin_reprise)
+                if dernier<premier or dernier<debut or premier>fin:continue
+                if debut>premier or fin<dernier:
+                    alertes_tresorerie.append('Une reprise mensuelle recoupe partiellement la période : son montant est exclu, sans répartition journalière inventée.');continue
+                for type_op,col in (('recette','recettes_centiemes'),('depense','depenses_centiemes')):
+                    if ligne[col] is None:alertes_tresorerie.append('Reprise incomplète : les totaux de la période restent partiels.')
+                    else:totaux[type_op]+=ligne[col]
+        result['recettes_ttc']=totaux['recette'];result['depenses_ttc']=totaux['depense']
         result['solde_periode']=result['recettes_ttc']-result['depenses_ttc']
         if regime=='franchise':
             result['taux']=[]
@@ -144,6 +165,7 @@ class FinancesPro:
             if rappel: avertissements.append(rappel)
             result['alertes']=avertissements
         else: result['alertes']=list(dict.fromkeys(result['alertes']+avertissements))
+        result['alertes']=list(dict.fromkeys(result['alertes']+alertes_tresorerie))
         result['depenses_non_detaillees']=anciens
         return result
 

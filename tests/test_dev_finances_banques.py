@@ -105,3 +105,18 @@ def test_copie_refuse_source_active_et_destination_production(tmp_path):
     (s/'patenteeasy.db-wal').write_bytes(b'journal actif')
     with pytest.raises(ValueError):copier(s,tmp_path/'dev')
     assert not (tmp_path/'dev').exists() and (s/'patenteeasy.db').read_bytes()==b'test'
+
+
+def test_ttc_reprise_mensuelle_sans_double_compte_ni_prorata_invente(base):
+    f,j,s=base;annee=int(j[:4]);premier=f'{annee}-01-01';dernier=f'{annee}-01-31'
+    with db.base.session() as c:
+        c.execute('UPDATE entreprise SET date_debut_activite=? WHERE id=1',(premier,))
+        c.execute('UPDATE fiscalite_annuelle SET date_fin_reprise=? WHERE annee=?',(dernier,annee))
+        c.execute("INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes) VALUES(?,'Ancienne recette doublonnée','recette',900)",(premier,))
+    db.enregistrer_reprise_mensuelle(annee,1,'400','100',True)
+    r=s.calculer(premier,dernier,'franchise')
+    assert (r['recettes_ttc'],r['depenses_ttc'])==(400,100)
+    assert any('double compte' in a for a in r['alertes'])
+    partiel=s.calculer(f'{annee}-01-15',f'{annee}-01-20','franchise')
+    assert partiel['recettes_ttc']==partiel['depenses_ttc']==0
+    assert any('partiellement' in a for a in partiel['alertes'])
