@@ -132,6 +132,8 @@ def verifier(rapport):
             from licences_pro import LicencePro,verifier as verifier_licence
             from datetime import datetime,timezone,timedelta
             import base64
+            cle_editeur = LicencePro(db.base).config['cle_publique_ed25519']
+            assert cle_editeur == 'JYN0UatgXCsf8FNSBSTxqzS0E2R/VzD3F3gXTtSFGtU=', 'Clé publique de licence obsolète dans le programme livré'
             cle_test=Ed25519PrivateKey.generate();maintenant=datetime.now(timezone.utc)
             payload={'schema':'ska-license-v1','app_id':'patenteasy','license_id':'TEST','customer_id':'TEST','customer_name':'Atelier test','features':['finance_tva','administratif'],'limits':{'employees':1,'sites':1},'issued_at':maintenant.isoformat(),'not_before':maintenant.isoformat(),'expires_at':(maintenant+timedelta(days=365)).isoformat()}
             licence_test={'payload':payload,'signature':base64.urlsafe_b64encode(cle_test.sign(json.dumps(payload,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode())).decode().rstrip('=')}
@@ -188,7 +190,7 @@ def verifier(rapport):
             resultat = {'ok': True, 'version': VERSION, 'qt': True, 'chiffrement': True,
                         'pdf': True, 'apercu_pdf': True, 'taxe': True, 'documents': True,
                         'profil_general': True, 'sauvegarde_nouveau_pc': True, 'ouverture_facture': True,
-                        'module_annuel':True,'signature_licence':True,'expiration_licence':True,'achats_partiels':True,'franchise_sans_deduction':True,
+                        'cle_publique_licence':cle_editeur,'module_annuel':True,'signature_licence':True,'expiration_licence':True,'achats_partiels':True,'franchise_sans_deduction':True,
                         'exports_pdf_bureau': True, 'conditions_reglages': True,
                         'conditions_documents_existants': True, 'conditions_enregistrement_auto': True,
                         'conditions_affichees_facture': True, 'nouveau_client_depuis_devis': True}
