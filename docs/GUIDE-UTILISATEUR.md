@@ -48,3 +48,11 @@ Les deux éditions conservent leurs données localement et indépendamment. Il n
 [Écrire à sav.centreprotech@proton.me](mailto:sav.centreprotech@proton.me).
 
 Indiquez votre version de Patenteasy, Windows ou Android, et le message d’erreur éventuel. N’envoyez pas vos mots de passe ni vos clés privées.
+
+## Facturer directement sur Windows
+
+Dans **Factures & avoirs**, cliquez sur **Créer une facture directe**. Choisissez le client, saisissez les lignes du catalogue ou des lignes libres, puis **Émettre la facture**. Aucun devis préalable n’est nécessaire. Vous pouvez enregistrer le brouillon et le retrouver avec **Reprendre une facture brouillon**. Une facture émise reste figée.
+
+## Suivre un avoir sur Windows
+
+Ouvrez l’avoir dans **Factures & avoirs**. L’écran détaille ce qui a déjà été déduit de la facture d’origine, utilisé, remboursé et ce qui reste disponible. **Utiliser sur une facture** permet de régler une autre facture du même client ; **Enregistrer un remboursement** enregistre un remboursement réel. Les utilisations et le solde figurent aussi dans les nouveaux exports PDF. Une part déjà déduite d’une facture impayée ne peut pas être réutilisée.

@@ -1,7 +1,7 @@
-name: Patenteasy module annuel · constructions de test
+name: Patenteasy Windows 0.4.5 · ventes directes et avoirs
 on:
   push:
-    branches: ['release/module-annuel-0.4.4']
+    branches: ['release/windows-0.4.5']
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
           $p = Start-Process -FilePath '.\dist\Patenteasy\Patenteasy.exe' -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
           if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme livré invalide' }
           $result = Get-Content $report -Raw | ConvertFrom-Json
-          if (-not $result.ok -or $result.version -ne '0.4.4') { throw 'Vérification échouée' }
+          if (-not $result.ok -or $result.version -ne '0.4.5') { throw 'Vérification échouée' }
           Copy-Item $report distribution/verification-programme.json
       - name: Installeur complet
         shell: pwsh
@@ -55,7 +55,7 @@ jobs:
           if ((Get-FileHash $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne '4f494ea32901ed1e5e443ae60b890e791146da54e5d00ae9e31ddedafb5d0a25') { throw 'Ancien installeur invalide' }
           $p = Start-Process -FilePath $old -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw 'Installation 0.4.0 échouée' }
-          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.4.4-Installation.exe'
+          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-0.4.5-Installation.exe'
           foreach ($pass in 1..2) {
             $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw 'Installation échouée' }
@@ -69,64 +69,16 @@ jobs:
       - name: Empreinte et sources
         shell: pwsh
         run: |
-          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.4.4-Installation.exe'
+          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-0.4.5-Installation.exe'
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $($exe.Name)" | Set-Content distribution/sortie/SHA256SUMS.txt -Encoding ascii
-          @{ version='0.4.4'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
-          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.4.4.zip HEAD
+          @{ version='0.4.5'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
+          git archive --format=zip --output=distribution/sortie/Patenteasy-Sources-0.4.5.zip HEAD
           Copy-Item distribution/verification-*.json distribution/sortie/
           Copy-Item distribution/module-ui-*.png distribution/sortie/
       - uses: actions/upload-artifact@v4
         with:
-          name: Patenteasy-Windows-0.4.4
+          name: Patenteasy-Windows-0.4.5
           path: distribution/sortie/*
-          if-no-files-found: error
-          retention-days: 30
-
-  android:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-          log-accepted-android-sdk-licenses: false
-      - name: SDK et dépendances de test
-        run: |
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-          npm install --prefix "$RUNNER_TEMP/mobile-tests" linkedom@0.18.12 playwright@1.58.2
-          "$RUNNER_TEMP/mobile-tests/node_modules/.bin/playwright" install --with-deps chromium
-          curl --fail --location --output "$RUNNER_TEMP/json.jar" https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
-      - name: Modèle, interface et protection native
-        timeout-minutes: 5
-        env:
-          NODE_PATH: ${{ runner.temp }}/mobile-tests/node_modules
-          PATENTEASY_TEST_JSON_JAR: ${{ runner.temp }}/json.jar
-        run: |
-          python -m pip install cryptography==46.0.3
-          node --test android/tests/mobile_model.test.cjs
-          node android/tests/interface_dom.test.cjs
-          timeout 120s node android/tests/interface.test.cjs
-          python android/tests/run_tests.py
-      - name: Préparer l’APK avec le SDK officiel
-        run: |
-          python android/compiler_apk.py --unsigned
-          cp "$ANDROID_SDK_ROOT/build-tools/35.0.0/lib/apksigner.jar" android/build/
-          python distribution/manifeste_android.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Patenteasy-Android-0.4.4-A-SIGNER
-          path: |
-            android/build/*-A-SIGNER.apk
-            android/build/apksigner.jar
-            android/build/android-verifie.json
           if-no-files-found: error
           retention-days: 30

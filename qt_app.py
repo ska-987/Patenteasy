@@ -703,15 +703,40 @@ class QuoteLineDialog(FormDialog):
         )
 
 
+class CatalogueCombo(QComboBox):
+    def showPopup(self):
+        self.view().setMinimumWidth(0)
+        self.view().setMaximumWidth(self.width())
+        super().showPopup()
+        popup = self.view().window()
+        popup.setFixedWidth(self.width())
+        screen = self.screen().availableGeometry()
+        popup.move(min(max(self.mapToGlobal(self.rect().topLeft()).x(), screen.left()),screen.right()-popup.width()+1),popup.y())
+
+
 class CatalogLineDialog(FormDialog):
     def __init__(self, parent=None):
         super().__init__(tr("Ajouter depuis le catalogue"), parent)
-        self.article = QComboBox()
+        self.article = CatalogueCombo()
+        self.article.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.article.setMinimumContentsLength(25)
+        self.article.setMinimumWidth(0)
+        self.article.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+        self.article.view().setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.article.setStyleSheet('QComboBox {combobox-popup:0;}')
         self.articles = db.lister_articles()
         for a in self.articles:
             self.article.addItem(f'{a["reference"]} — {a["designation"]} · {fcfp(a["prix_vente_centiemes"])} HT', a["id"])
         self.quantite = QLineEdit("1")
+        self.detail_article = QLabel();self.detail_article.setWordWrap(True)
+        self.detail_article.setMinimumWidth(0)
+        self.detail_article.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred)
+        self.form.setSizeConstraint(QLayout.SizeConstraint.SetDefaultConstraint)
+        self.article.currentIndexChanged.connect(lambda _:self.detail_article.setText(self.article.currentText()))
+        self.detail_article.setText(self.article.currentText())
+        for i in range(self.article.count()):self.article.setItemData(i,self.article.itemText(i),Qt.ItemDataRole.ToolTipRole)
         self.form.addRow(tr("Catalogue"), self.article)
+        self.form.addRow(self.detail_article)
         self.form.addRow(tr("Quantité"), self.quantite)
 
     def values(self):
@@ -1130,10 +1155,11 @@ class QuoteEditorDialog(QDialog):
     def __init__(self, quote_id: int, parent=None):
         super().__init__(parent)
         self.quote_id = quote_id
+        self.direct = (db.obtenir_devis(quote_id) or {}).get('type_brouillon') == 'facture'
         self._loading = True
         self._ready = False
         self._dirty = False
-        self.setWindowTitle(tr("Devis"))
+        self.setWindowTitle(tr("Facture directe" if self.direct else "Devis"))
         self.resize(1120, 790)
         outer = QVBoxLayout(self)
         self.scroll = QScrollArea()
@@ -1147,7 +1173,7 @@ class QuoteEditorDialog(QDialog):
         self.status.setObjectName("lead")
         root.addWidget(self.status)
         self.save_state=QLabel();self.save_state.setWordWrap(True);root.addWidget(self.save_state)
-        header = QGroupBox(tr("En-tête du devis"))
+        header = QGroupBox(tr("En-tête de la facture" if self.direct else "En-tête du devis"))
         form = QGridLayout(header)
         self.client_choice = ClientChoice(self)
         self.client = self.client_choice.combo
@@ -1158,7 +1184,8 @@ class QuoteEditorDialog(QDialog):
         form.addWidget(QLabel(tr("Client")), 0, 0); form.addWidget(self.client_choice, 0, 1)
         form.addWidget(QLabel(tr("Date")), 0, 2); form.addWidget(self.date, 0, 3)
         form.addWidget(QLabel(tr("Objet")), 1, 0); form.addWidget(self.objet, 1, 1, 1, 3)
-        form.addWidget(QLabel(tr("Validité (jours)")), 2, 0); form.addWidget(self.validite, 2, 1)
+        validite_label=QLabel(tr("Validité (jours)"));validite_label.setVisible(not self.direct);self.validite.setVisible(not self.direct)
+        form.addWidget(validite_label, 2, 0); form.addWidget(self.validite, 2, 1)
         root.addWidget(header)
         linebar = QHBoxLayout()
         self.add_catalog_btn = button(tr("Ajouter du catalogue"), self.add_catalog)
@@ -1222,7 +1249,7 @@ class QuoteEditorDialog(QDialog):
         if not d:
             self.reject(); return
         s = g.calculer(self.quote_id)
-        self.status.setText(tr("Devis")+" "+(d.get("numero") or tr("brouillon")+" #"+str(d["id"]))+" · "+tr(d["statut"])+" · "+d["nom_client"])
+        self.status.setText(tr("Facture directe" if self.direct else "Devis")+" "+(d.get("numero") or tr("brouillon")+" #"+str(d["id"]))+" · "+tr(d["statut"])+" · "+d["nom_client"])
         if not keep_header:
             idx = self.client.findData(d["client_id"])
             if idx >= 0: self.client.setCurrentIndex(idx)
@@ -1252,8 +1279,10 @@ class QuoteEditorDialog(QDialog):
         self.new_client_btn.setVisible(draft)
         for b in [self.save_btn, self.add_catalog_btn, self.add_free_btn, self.edit_line_btn, self.remove_line_btn]: b.setVisible(draft)
         self.emit_btn.setVisible(draft)
-        self.accept_btn.setVisible(sent); self.refuse_btn.setVisible(sent)
-        self.invoice_btn.setVisible(accepted)
+        self.emit_btn.setText(tr('Émettre la facture' if self.direct else 'Finaliser le devis'))
+        self.accept_btn.setVisible(sent and not self.direct); self.refuse_btn.setVisible(sent and not self.direct)
+        self.invoice_btn.setVisible(accepted and not self.direct)
+        self.duplicate_btn.setVisible(not self.direct)
         self.changed.emit()
         self._loading=False
 
@@ -1286,7 +1315,7 @@ class QuoteEditorDialog(QDialog):
         try:
             from apercu_pdf import ouvrir
             s=g.calculer(self.quote_id);d=db.obtenir_devis(self.quote_id)
-            ouvrir(self,generer(s,not bool(d.get('instantane'))),(d.get('numero') or 'devis-brouillon')+'.pdf')
+            ouvrir(self,generer(s,not bool(d.get('instantane'))),(d.get('numero') or ('facture-brouillon' if self.direct else 'devis-brouillon'))+'.pdf')
         except Exception as exc:show_error(self,exc)
 
     def add_catalog(self):
@@ -1329,6 +1358,8 @@ class QuoteEditorDialog(QDialog):
             except Exception as exc: show_error(self, exc)
 
     def emit_quote(self):
+        if self.direct:
+            self.create_invoice();return
         if not confirm(self, tr("Émettre ce devis ? Un numéro sera attribué et cette version sera figée.")):
             return
         try:
@@ -1348,7 +1379,7 @@ class QuoteEditorDialog(QDialog):
         try:
             s = g.calculer(self.quote_id)
             d = db.obtenir_devis(self.quote_id)
-            name = (d.get("numero") or f"devis-brouillon-{self.quote_id}") + ".pdf"
+            name = (d.get("numero") or f"{'facture' if self.direct else 'devis'}-brouillon-{self.quote_id}") + ".pdf"
             save_pdf(self, generer(s, not bool(d.get("instantane"))), name)
         except Exception as exc: show_error(self, exc)
 
@@ -1361,16 +1392,17 @@ class QuoteEditorDialog(QDialog):
         except Exception as exc: show_error(self, exc)
 
     def create_invoice(self):
+        if not self.save_header(refresh=False):return
         d = QDialog(self); d.setWindowTitle(tr("Créer la facture"))
         layout = QFormLayout(d)
-        invoice_date = make_date(g.aujourd_hui().isoformat())
+        invoice_date = make_date(iso_date(self.date) if self.direct else g.aujourd_hui().isoformat())
         due = make_date(g.aujourd_hui().isoformat())
         layout.addRow(tr("Date de facture"), invoice_date); layout.addRow(tr("Échéance"), due)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(d.accept); bb.rejected.connect(d.reject); layout.addRow(bb)
         if d.exec():
             try:
-                fid = g.creer_facture(self.quote_id, iso_date(invoice_date), iso_date(due))
+                fid = (g.emettre_facture_directe if self.direct else g.creer_facture)(self.quote_id, iso_date(invoice_date), iso_date(due))
                 self.changed.emit(); self.refresh()
                 InvoiceDialog(fid, self).exec()
                 self.changed.emit()
@@ -1443,9 +1475,10 @@ class InvoiceDialog(QDialog):
         self.pay_btn = button(tr("Enregistrer un paiement"), self.pay)
         self.credit_btn = button(tr("Émettre un avoir"), self.credit, danger=True)
         self.refund_btn = button(tr("Enregistrer un remboursement"), self.refund, secondary=True)
-        for i, b in enumerate([self.pdf_btn, self.export_btn, self.pay_btn, self.credit_btn, self.refund_btn]):
+        self.use_credit_btn = button(tr("Utiliser sur une facture"), self.use_credit, secondary=True)
+        for i, b in enumerate([self.pdf_btn, self.export_btn, self.pay_btn, self.credit_btn, self.refund_btn, self.use_credit_btn]):
             bar.addWidget(b, i // 3, i % 3)
-        bar.addWidget(button(tr("Fermer"), self.accept, secondary=True), 1, 2); outer.addLayout(bar)
+        bar.addWidget(button(tr("Fermer"), self.accept, secondary=True), 2, 2); outer.addLayout(bar)
         self.refresh()
 
     def refresh(self):
@@ -1458,9 +1491,15 @@ class InvoiceDialog(QDialog):
         self.conditions.refresh()
         self.pay_btn.setVisible(d["type"] == "facture" and d["reste"] > 0)
         self.credit_btn.setVisible(d["type"] == "facture" and d["credite"] < d["total_centiemes"])
-        self.refund_btn.setVisible(d.get("a_rembourser", 0) > 0)
+        self.use_credit_btn.setVisible(d['type']=='avoir' and d['situation_avoir']['disponible']>0)
+        self.refund_btn.setVisible((g.document(d['origine_id'])['a_rembourser']>0 and d['situation_avoir']['disponible']>0) if d['type']=='avoir' else d.get('a_rembourser',0)>0)
+        if d['type']=='avoir':
+            a=d['situation_avoir']
+            self.metrics.setText('Facture d’origine : '+c.get('origine_numero','')+'\nMontant '+fcfp(d['total_centiemes'])+' · '+a['statut']+'\nDéduit de la facture d’origine : '+fcfp(a['compense'])+' · Utilisé : '+fcfp(a['utilise'])+' · Remboursé : '+fcfp(a['rembourse'])+' · Disponible : '+fcfp(a['disponible']))
+            remboursements=g.liste('SELECT date_remboursement,montant_centiemes,mode FROM remboursements WHERE avoir_id=?',(self.document_id,))
+            fill_table(self.payments,[[u['jour'],fcfp(u['montant_centiemes']),'avoir',u['numero']] for u in a['utilisations']]+[[r['date_remboursement'],fcfp(r['montant_centiemes']),r['mode'],'Remboursement'] for r in remboursements])
         if not est_admin(self):
-            self.credit_btn.hide(); self.refund_btn.hide()
+            self.credit_btn.hide(); self.refund_btn.hide();self.use_credit_btn.hide()
         self.changed.emit()
 
     def preview_pdf(self):
@@ -1500,23 +1539,63 @@ class InvoiceDialog(QDialog):
         dlg = PaymentDialog(True, self)
         if dlg.exec():
             try:
-                day, amount, mode, _ = dlg.values(); g.rembourser(self.document_id, day, amount, mode); self.refresh()
+                day, amount, mode, _ = dlg.values(); (g.rembourser_avoir if g.document(self.document_id)['type']=='avoir' else g.rembourser)(self.document_id, day, amount, mode); self.refresh()
             except Exception as exc: show_error(self, exc)
+
+    def use_credit(self):
+        if not exiger_admin(self):return
+        try:
+            avoir=g.document(self.document_id)
+            candidats=[d for d in g.documents() if d['type']=='facture' and d['id']!=avoir['origine_id'] and g.document(d['id'])['reste']>0 and json.loads(d['instantane'])['client']['id']==avoir['contenu']['client']['id']]
+            if not candidats:show_info(self,'Aucune autre facture à régler pour ce client.');return
+            choix={d['numero']:d['id'] for d in candidats}
+            numero,ok=QInputDialog.getItem(self,'Utiliser l’avoir','Facture à régler',list(choix),0,False)
+            if not ok:return
+            cible=g.document(choix[numero]);dialog=FormDialog('Utiliser l’avoir',self)
+            jour=make_date(g.aujourd_hui().isoformat());montant=QLineEdit(money_text(min(cible['reste'],avoir['situation_avoir']['disponible'])))
+            dialog.form.addRow('Date',jour);dialog.form.addRow('Montant',montant)
+            if dialog.exec():g.utiliser_avoir(self.document_id,cible['id'],iso_date(jour),montant.text());self.refresh()
+        except Exception as exc:show_error(self,exc)
 
 
 class InvoicesPage(Page):
     def __init__(self, parent=None):
         super().__init__(tr("Documents"), tr("Factures et encaissements"), tr("Retrouvez une facture pour enregistrer un paiement."), parent)
+        vente=QHBoxLayout()
+        self.direct_btn=button(tr('Créer une facture directe'),self.create_direct)
+        self.draft_btn=button(tr('Reprendre une facture brouillon'),self.resume_direct,secondary=True)
+        vente.addWidget(self.direct_btn);vente.addWidget(self.draft_btn);vente.addStretch();self.layout.addLayout(vente)
         self.recherche = QLineEdit()
         self.recherche.setPlaceholderText(tr("Numéro exact de facture"))
         self.recherche.returnPressed.connect(self.refresh)
         self.recherche.textChanged.connect(lambda _texte: self.refresh())
         bar = QHBoxLayout(); bar.addWidget(self.recherche); bar.addWidget(button(tr("Rechercher"), self.refresh)); bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True)); bar.addWidget(button(tr("Ouvrir le dossier PDF"), lambda: open_pdf_folder(self), secondary=True))
         self.layout.addLayout(bar)
-        self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr("Date"), tr("Client"), tr("Total"), tr("Réglé"), tr("Reste")])
+        self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr("Date"), tr("Client"), tr("Total"), tr("Réglé"), tr("Reste / solde avoir"), tr("État")])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)
 
+    def create_direct(self):
+        if not exiger_admin(self):return
+        dialog=QuoteCreateDialog(self)
+        dialog.setWindowTitle('Nouvelle facture directe')
+        dialog.buttons.button(QDialogButtonBox.StandardButton.Save).setText('Créer la facture brouillon')
+        if dialog.exec():
+            try:
+                ident=g.creer_brouillon_facture(*dialog.values())
+                editeur=QuoteEditorDialog(ident,self);editeur.changed.connect(self.refresh);editeur.exec();self.refresh()
+            except Exception as exc:show_error(self,exc)
+
+    def resume_direct(self):
+        if not exiger_admin(self):return
+        brouillons=g.brouillons_factures()
+        if not brouillons:show_info(self,'Aucun brouillon de facture directe.');return
+        choix={str(d['id'])+' · '+d['date_devis']+' · '+d['objet']:d['id'] for d in brouillons}
+        titre,ok=QInputDialog.getItem(self,'Reprendre un brouillon','Facture directe',list(choix),0,False)
+        if ok:
+            editeur=QuoteEditorDialog(choix[titre],self);editeur.changed.connect(self.refresh);editeur.exec();self.refresh()
+
     def refresh(self):
+        self.direct_btn.setVisible(est_admin(self));self.draft_btn.setVisible(est_admin(self))
         texte = self.recherche.text().strip()
         if not est_admin(self) and not texte:
             fill_table(self.table, [], []); return
@@ -1528,8 +1607,8 @@ class InvoicesPage(Page):
                     if texte.casefold() not in (d["numero"]+" "+contenu_recherche["client"]["nom"]).casefold():continue
                 elif d["numero"].casefold()!=texte.casefold():continue
             if not est_admin(self) and d["type"] != "facture": continue
-            content=json.loads(d["instantane"]); rest=max(0,d["total_centiemes"]-d["paye"]-d["credite"])
-            rows.append([d["numero"], d["date_document"], content["client"]["nom"], fcfp(d["total_centiemes"]), fcfp(d["paye"]), fcfp(rest)])
+            content=json.loads(d["instantane"]); rest=(g.etat_avoir(d["id"])["disponible"] if d["type"]=="avoir" else max(0,d["total_centiemes"]-d["paye"]-d["credite"]))
+            rows.append([d["numero"], d["date_document"], content["client"]["nom"], fcfp(d["total_centiemes"]), fcfp(d["paye"]), fcfp(rest), g.etat_avoir(d["id"])["statut"] if d["type"]=="avoir" else ("Réglée" if rest==0 else "À régler")])
             ids.append(d["id"])
         fill_table(self.table, rows, ids)
 

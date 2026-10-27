@@ -148,6 +148,7 @@ class BaseDonnees:
             connexion.execute("""
             CREATE TABLE IF NOT EXISTS devis (
                 id INTEGER PRIMARY KEY,
+                type_brouillon TEXT NOT NULL DEFAULT 'devis',
                 client_id INTEGER NOT NULL,
                 date_devis TEXT NOT NULL,
                 objet TEXT NOT NULL DEFAULT '',
@@ -827,7 +828,7 @@ class BaseDonnees:
 
     def lister_devis(self):
         with self.session() as connexion:
-            lignes = connexion.execute('\n            SELECT\n                devis.id,\n                devis.date_devis,\n                devis.objet,\n                devis.statut,\n                clients.nom AS nom_client\n            FROM devis\n            JOIN clients ON clients.id = devis.client_id\n            ORDER BY devis.date_devis DESC, devis.id DESC\n            ').fetchall()
+            lignes = connexion.execute('\n            SELECT\n                devis.id,\n                devis.date_devis,\n                devis.objet,\n                devis.statut,\n                clients.nom AS nom_client\n            FROM devis\n            JOIN clients ON clients.id = devis.client_id\n            WHERE devis.type_brouillon = \'devis\'\n            ORDER BY devis.date_devis DESC, devis.id DESC\n            ').fetchall()
             return [dict(ligne) for ligne in lignes]
 
     def obtenir_devis(self, devis_id):

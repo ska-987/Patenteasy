@@ -55,12 +55,17 @@ class GestionDocuments:
             if nouveaux and ancien:
                 c.execute("UPDATE entreprise SET pays='PF',devise='XPF',nom_taxe='TVA',libelle_identifiant='N° TAHITI',mention_sans_taxe='TVA non applicable, franchise en base' WHERE id=1")
             c.execute("CREATE TABLE IF NOT EXISTS brouillons_ui (devis_id INTEGER PRIMARY KEY REFERENCES devis(id) ON DELETE CASCADE, contenu TEXT NOT NULL)")
+            if 'type_brouillon' not in {r[1] for r in c.execute('PRAGMA table_info(devis)')}:
+                c.execute("ALTER TABLE devis ADD COLUMN type_brouillon TEXT NOT NULL DEFAULT 'devis'")
             c.execute("""CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY, type TEXT NOT NULL CHECK(type IN ('facture','avoir')),
             numero TEXT NOT NULL UNIQUE, date_document TEXT NOT NULL,
             echeance TEXT NOT NULL, devis_id INTEGER UNIQUE REFERENCES devis(id),
             origine_id INTEGER REFERENCES documents(id), instantane TEXT NOT NULL,
             total_centiemes INTEGER NOT NULL CHECK(total_centiemes >= 0))""")
+            if 'brouillon_id' not in {r[1] for r in c.execute('PRAGMA table_info(documents)')}:
+                c.execute('ALTER TABLE documents ADD COLUMN brouillon_id INTEGER REFERENCES devis(id)')
+            c.execute('CREATE UNIQUE INDEX IF NOT EXISTS document_brouillon_unique ON documents(brouillon_id) WHERE brouillon_id IS NOT NULL')
             c.execute("""CREATE TABLE IF NOT EXISTS sequences (
             type TEXT NOT NULL, annee INTEGER NOT NULL, compteur INTEGER NOT NULL,
             PRIMARY KEY(type, annee))""")
@@ -73,6 +78,12 @@ class GestionDocuments:
             id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL REFERENCES documents(id),
             date_remboursement TEXT NOT NULL, montant_centiemes INTEGER NOT NULL CHECK(montant_centiemes>0),
             mode TEXT NOT NULL, operation_id INTEGER UNIQUE REFERENCES operations(id))""")
+            if 'avoir_id' not in {r[1] for r in c.execute('PRAGMA table_info(remboursements)')}:
+                c.execute('ALTER TABLE remboursements ADD COLUMN avoir_id INTEGER REFERENCES documents(id)')
+            c.execute('''CREATE TABLE IF NOT EXISTS utilisations_avoirs (
+                id INTEGER PRIMARY KEY, avoir_id INTEGER NOT NULL REFERENCES documents(id),
+                facture_id INTEGER NOT NULL REFERENCES documents(id), jour TEXT NOT NULL,
+                montant_centiemes INTEGER NOT NULL CHECK(montant_centiemes>0))''')
             c.execute("""CREATE TABLE IF NOT EXISTS rappels (
             id INTEGER PRIMARY KEY, titre TEXT NOT NULL, echeance TEXT NOT NULL,
             fait INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT '',
@@ -199,7 +210,10 @@ class GestionDocuments:
                 g['tva'] += l['tva']
         ht = sum((l['ht'] for l in lignes))
         tva = sum((l['tva'] for l in lignes))
-        return {'devis': d, 'entreprise': self.base.obtenir_entreprise(), 'client': self.base.obtenir_client(d['client_id']), 'lignes': lignes, 'regime': regime, 'groupes': list(groupes.values()), 'ht': ht, 'tva': tva, 'ttc': ht + tva, 'validite': (date.fromisoformat(d['date_devis']) + timedelta(days=d['validite_jours'])).isoformat(), 'mention_tva': self.base.obtenir_entreprise().get('mention_sans_taxe', '') if regime == 'franchise' else '', 'conditions_vente': d['conditions_vente'], 'conditions_reglement': d['conditions_reglement'], 'mention_complementaire': d['mention_complementaire']}
+        resultat = {'devis': d, 'entreprise': self.base.obtenir_entreprise(), 'client': self.base.obtenir_client(d['client_id']), 'lignes': lignes, 'regime': regime, 'groupes': list(groupes.values()), 'ht': ht, 'tva': tva, 'ttc': ht + tva, 'validite': (date.fromisoformat(d['date_devis']) + timedelta(days=d['validite_jours'])).isoformat(), 'mention_tva': self.base.obtenir_entreprise().get('mention_sans_taxe', '') if regime == 'franchise' else '', 'conditions_vente': d['conditions_vente'], 'conditions_reglement': d['conditions_reglement'], 'mention_complementaire': d['mention_complementaire']}
+        if d.get('type_brouillon') == 'facture':
+            resultat.update(type='facture', date_document=d['date_devis'], echeance=d['date_devis'])
+        return resultat
 
     def verifier_emission(self, s):
         e = s['entreprise']
@@ -251,8 +265,8 @@ class GestionDocuments:
     def emettre_devis(self, identifiant):
         with self.connexion() as c:
             d = c.execute('SELECT * FROM devis WHERE id=?', (identifiant,)).fetchone()
-            if not d or d['statut'] != 'brouillon':
-                raise ValueError('Ce devis n’est plus un brouillon.')
+            if not d or d['statut'] != 'brouillon' or d['type_brouillon'] != 'devis':
+                raise ValueError('Choisissez un brouillon de devis.')
             s = self.calculer(identifiant)
             self.verifier_emission(s)
             c.execute('DELETE FROM brouillons_ui WHERE devis_id=?', (identifiant,))
@@ -282,6 +296,38 @@ class GestionDocuments:
             SELECT ?,reference,designation,unite,quantite_centiemes,prix_unitaire_centiemes,taxe_centiemes FROM devis_lignes WHERE devis_id=?""", (nid, identifiant))
             return nid
 
+    def creer_brouillon_facture(self, client_id, jour, objet=''):
+        ident = self.creer_devis(client_id, jour, objet)
+        with self.connexion() as c:
+            c.execute("UPDATE devis SET type_brouillon='facture' WHERE id=?",(ident,))
+        return ident
+
+    def brouillons_factures(self):
+        return self.liste("SELECT id,date_devis,objet FROM devis WHERE type_brouillon='facture' AND statut='brouillon' ORDER BY id DESC")
+
+    def emettre_facture_directe(self, brouillon_id, jour, echeance):
+        from coffre import ACTIF
+        if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
+            raise PermissionError('Action réservée à l’administrateur.')
+        jour, echeance = self.date_valide(jour), self.date_valide(echeance)
+        if jour > self.aujourd_hui().isoformat() or echeance < jour:
+            raise ValueError('Date future ou échéance antérieure à la facture.')
+        with self.connexion() as c:
+            d = c.execute('SELECT * FROM devis WHERE id=?',(brouillon_id,)).fetchone()
+            if not d or d['type_brouillon'] != 'facture' or d['statut'] != 'brouillon':
+                raise ValueError('Choisissez un brouillon de facture directe non émis.')
+            if jour != d['date_devis']:
+                raise ValueError('La date de la facture doit correspondre à celle du brouillon. Corrigez son en-tête.')
+            contenu = self.calculer(brouillon_id)
+            self.verifier_emission(contenu)
+            numero = self.numero(c,'facture',int(jour[:4]))
+            contenu.update(type='facture',numero=numero,date_document=jour,echeance=echeance)
+            ident = c.execute("""INSERT INTO documents(type,numero,date_document,echeance,brouillon_id,instantane,total_centiemes)
+                VALUES('facture',?,?,?,?,?,?)""",(numero,jour,echeance,brouillon_id,json.dumps(contenu,ensure_ascii=False),contenu['ttc'])).lastrowid
+            c.execute("UPDATE devis SET statut='accepte',instantane=? WHERE id=?",(json.dumps(contenu,ensure_ascii=False),brouillon_id))
+            c.execute('DELETE FROM brouillons_ui WHERE devis_id=?',(brouillon_id,))
+            return ident
+
     def creer_facture(self, devis_id, jour, echeance):
         jour = self.date_valide(jour)
         echeance = self.date_valide(echeance)
@@ -289,7 +335,7 @@ class GestionDocuments:
             raise ValueError('Date future ou échéance antérieure à la facture.')
         with self.connexion() as c:
             d = c.execute('SELECT * FROM devis WHERE id=?', (devis_id,)).fetchone()
-            if not d or d['statut'] != 'accepte':
+            if not d or d['statut'] != 'accepte' or d['type_brouillon'] != 'devis':
                 raise ValueError('Enregistrez d’abord l’acceptation du devis.')
             if c.execute('SELECT id FROM documents WHERE devis_id=?', (devis_id,)).fetchone():
                 raise ValueError('Une facture existe déjà pour ce devis.')
@@ -305,7 +351,11 @@ class GestionDocuments:
             VALUES('facture',?,?,?,?,?,?)""", (n, jour, echeance, devis_id, json.dumps(s, ensure_ascii=False), s['ttc'])).lastrowid
 
     def documents(self):
-        return self.liste("""SELECT d.*, COALESCE((SELECT SUM(montant_centiemes) FROM paiements WHERE document_id=d.id),0) AS paye,
+        return self.liste("""SELECT d.*,
+        COALESCE((SELECT SUM(montant_centiemes) FROM paiements WHERE document_id=d.id),0) AS encaisse,
+        COALESCE((SELECT SUM(montant_centiemes) FROM utilisations_avoirs WHERE facture_id=d.id),0) AS impute,
+        COALESCE((SELECT SUM(montant_centiemes) FROM paiements WHERE document_id=d.id),0) +
+        COALESCE((SELECT SUM(montant_centiemes) FROM utilisations_avoirs WHERE facture_id=d.id),0) AS paye,
         COALESCE((SELECT SUM(total_centiemes) FROM documents WHERE origine_id=d.id),0) AS credite
         FROM documents d ORDER BY date_document DESC,id DESC""")
 
@@ -315,8 +365,13 @@ class GestionDocuments:
                 d['contenu'] = json.loads(d['instantane'])
                 d['reste'] = max(0, d['total_centiemes'] - d['paye'] - d['credite'])
                 d['remboursements'] = self.liste('SELECT * FROM remboursements WHERE document_id=? ORDER BY id', (identifiant,))
-                d['a_rembourser'] = max(0, d['paye'] - (d['total_centiemes'] - d['credite'])) - sum((r['montant_centiemes'] for r in d['remboursements']))
+                transfere = sum(x['montant_centiemes'] for x in self.liste('SELECT u.montant_centiemes FROM utilisations_avoirs u JOIN documents a ON a.id=u.avoir_id WHERE a.origine_id=?',(identifiant,)))
+                d['a_rembourser'] = max(0, min(d['encaisse'] - sum(r['montant_centiemes'] for r in d['remboursements']), d['paye'] - d['total_centiemes'] + d['credite'] - sum(r['montant_centiemes'] for r in d['remboursements']) - transfere))
                 d['paiements'] = self.liste('SELECT * FROM paiements WHERE document_id=? ORDER BY date_paiement,id', (identifiant,))
+                d['paiements'] += self.liste("SELECT u.jour AS date_paiement,u.montant_centiemes,'avoir' AS mode,a.numero AS reference FROM utilisations_avoirs u JOIN documents a ON a.id=u.avoir_id WHERE u.facture_id=? ORDER BY u.jour,u.id",(identifiant,))
+                if d['type'] == 'avoir':
+                    d['situation_avoir'] = self.etat_avoir(identifiant)
+                    d['contenu']['situation_avoir'] = d['situation_avoir']
                 if d['type'] == 'facture':
                     # Vue courante pour aperçu/export, sans modifier l'instantané émis.
                     d['contenu']['reglements'] = {
@@ -370,6 +425,7 @@ class GestionDocuments:
             for l in s['lignes']:
                 restant = l['quantite_centiemes'] - deja.get(l['id'], 0)
                 q = restant if quantites is None else self.base.convertir_en_centiemes(quantites.get(str(l['id']), '0') or '0')
+                if q < 0:raise ValueError('La quantité à créditer doit être positive.')
                 if q > restant:
                     raise ValueError('La quantité à créditer dépasse la quantité restante de ' + l['designation'])
                 if not q:
@@ -408,7 +464,7 @@ class GestionDocuments:
         with self.connexion() as c:
             d = self.document(identifiant)
             deja = c.execute('SELECT COALESCE(SUM(montant_centiemes),0) FROM remboursements WHERE document_id=?', (identifiant,)).fetchone()[0]
-            maximum = max(0, d['paye'] - (d['total_centiemes'] - d['credite'])) - deja
+            maximum = d['a_rembourser']
             if d['type'] != 'facture' or m > maximum:
                 raise ValueError('Le remboursement dépasse le montant disponible après avoir.')
             if jour < d['date_document'] or jour > self.aujourd_hui().isoformat():
@@ -418,6 +474,72 @@ class GestionDocuments:
                 raise ValueError('Date comprise dans la reprise.')
             op = c.execute('INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes) VALUES(?,?,?,?)', (jour, 'Remboursement ' + d['numero'], 'depense', m)).lastrowid
             c.execute('INSERT INTO remboursements(document_id,date_remboursement,montant_centiemes,mode,operation_id) VALUES(?,?,?,?,?)', (identifiant, jour, m, mode, op))
+
+    def etat_avoir(self, avoir_id):
+        documents = self.documents()
+        avoir = next((d for d in documents if d['id']==avoir_id and d['type']=='avoir'),None)
+        if not avoir:raise ValueError('Avoir introuvable.')
+        origine = next(d for d in documents if d['id']==avoir['origine_id'])
+        # Une partie de l'avoir a déjà réduit le solde de la facture d'origine.
+        a_compenser = max(0,origine['total_centiemes']-origine['paye'])
+        anciens = self.liste('SELECT * FROM remboursements WHERE document_id=?',(origine['id'],))
+        ancien_reste = sum(x['montant_centiemes'] for x in anciens if x['avoir_id'] is None)
+        for credit in sorted((d for d in documents if d['origine_id']==origine['id']),key=lambda d:d['id']):
+            compense = min(credit['total_centiemes'],a_compenser)
+            a_compenser -= compense
+            base = credit['total_centiemes']-compense
+            explicite = sum(x['montant_centiemes'] for x in anciens if x['avoir_id']==credit['id'])
+            usages = self.liste('SELECT u.*,d.numero FROM utilisations_avoirs u JOIN documents d ON d.id=u.facture_id WHERE avoir_id=? ORDER BY u.jour,u.id',(credit['id'],))
+            utilise = sum(x['montant_centiemes'] for x in usages)
+            historique = min(max(0,base-explicite-utilise),ancien_reste);ancien_reste -= historique
+            rembourse = historique + explicite
+            if credit['id']==avoir_id:
+                disponible = max(0,base-rembourse-utilise)
+                statut = ('Partiellement utilisé' if utilise or rembourse else 'Disponible') if disponible else ('Utilisé et remboursé' if utilise and rembourse else 'Utilisé' if utilise else 'Remboursé' if rembourse else 'Déduit de la facture d’origine')
+                return dict(compense=compense,rembourse=rembourse,utilise=utilise,disponible=disponible,statut=statut,utilisations=usages)
+
+    def utiliser_avoir(self, avoir_id, facture_id, jour, montant):
+        from coffre import ACTIF
+        if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
+            raise PermissionError('Action réservée à l’administrateur.')
+        jour=self.date_valide(jour);m=self.base.convertir_montant(montant)
+        with self.connexion() as c:
+            avoir=self.document(avoir_id);facture=self.document(facture_id)
+            if avoir['type']!='avoir' or facture['type']!='facture' or facture_id==avoir['origine_id']:
+                raise ValueError('Choisissez une autre facture du client.')
+            if avoir['contenu']['client']['id']!=facture['contenu']['client']['id']:
+                raise ValueError('L’avoir et la facture doivent appartenir au même client.')
+            for k in ('devise','decimales'):
+                if regional.configuration(avoir['contenu']['entreprise'])[k]!=regional.configuration(facture['contenu']['entreprise'])[k]:
+                    raise ValueError('Les devises ou précisions des documents diffèrent.')
+            if m<=0 or m>avoir['situation_avoir']['disponible'] or m>facture['reste']:
+                raise ValueError('Le montant dépasse le solde disponible de l’avoir ou le reste de la facture.')
+            if jour<max(avoir['date_document'],facture['date_document']) or jour>self.aujourd_hui().isoformat():
+                raise ValueError('Date d’utilisation invalide.')
+            c.execute('INSERT INTO utilisations_avoirs(avoir_id,facture_id,jour,montant_centiemes) VALUES(?,?,?,?)',(avoir_id,facture_id,jour,m))
+
+    def rembourser_avoir(self, avoir_id, jour, montant, mode):
+        from coffre import ACTIF
+        if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
+            raise PermissionError('Action réservée à l’administrateur.')
+        jour=self.date_valide(jour);m=self.base.convertir_montant(montant)
+        if mode not in ('virement','carte','especes','cheque','autre') or m<=0:
+            raise ValueError('Montant ou moyen invalide.')
+        cfg=regional.configuration(self.base.obtenir_entreprise())
+        if mode=='especes' and cfg['pays']=='PF' and cfg['devise']=='XPF' and m%(5*10**cfg['decimales']):
+            raise ValueError('Le montant en espèces doit être un multiple de 5 F CFP.')
+        with self.connexion() as c:
+            avoir=self.document(avoir_id)
+            if avoir['type']!='avoir':raise ValueError('Choisissez un avoir.')
+            origine=self.document(avoir['origine_id'])
+            if m>min(avoir['situation_avoir']['disponible'],origine['a_rembourser']):
+                raise ValueError('Le remboursement dépasse le montant disponible.')
+            if jour<avoir['date_document'] or jour>self.aujourd_hui().isoformat():raise ValueError('Date invalide.')
+            fiscal=self.base.obtenir_fiscalite_annuelle(int(jour[:4])) or {}
+            if fiscal.get('date_fin_reprise','') and jour<=fiscal['date_fin_reprise']:
+                raise ValueError('Date comprise dans la reprise.')
+            op=c.execute('INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes) VALUES(?,?,?,?)',(jour,'Remboursement '+avoir['numero'],'depense',m)).lastrowid
+            c.execute('INSERT INTO remboursements(document_id,avoir_id,date_remboursement,montant_centiemes,mode,operation_id) VALUES(?,?,?,?,?,?)',(origine['id'],avoir_id,jour,m,mode,op))
 
     def stock(self):
         return self.liste("""SELECT a.*,COALESCE(SUM(s.quantite_centiemes),0) AS stock FROM articles a

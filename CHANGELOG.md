@@ -1,3 +1,10 @@
+## 0.4.5 — 2026-10-27 (Windows)
+
+- Liste catalogue ajustée à la fenêtre, texte intégral visible sous le choix.
+- Factures directes sans devis, brouillons reprenables, numérotation habituelle et documents émis figés.
+- Avoirs : solde disponible, imputation sur une autre facture du même client, remboursement et historique/PDF. Aucune fausse recette créée par une utilisation d’avoir.
+- Migration additive des données existantes. Android reste en 0.4.4 ; son entrée du catalogue signé est conservée.
+
 ## 0.4.4 — 2026-10-13
 
 Modules payants en couleur ambre avec cadenas et À débloquer ; vert et Activé uniquement pour les droits autorisés. Navigation, tableau de bord et dépenses Windows/Android ; actualisation après activation.

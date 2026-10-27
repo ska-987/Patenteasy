@@ -133,6 +133,13 @@ def generer(s, brouillon=False, *, conditions=None):
     if s['mention_tva']: fin.append(p(s['mention_tva']))
     total_label = (P('Montant de l’avoir') if typ == 'avoir' else ('Invoice total' if anglais else 'Total de la facture') if typ == 'facture' and s.get('reglements') is not None else P('Total à payer'))
     fin.append(p(total_label + ' : ' + M(s['ttc']) + ' ' + cfg['devise'], 'Heading2'))
+    if typ == 'avoir' and s.get('situation_avoir') is not None:
+        suivi=s['situation_avoir']
+        fin.append(p('Situation de l’avoir : '+suivi['statut']))
+        for titre,champ in [('Déduit de la facture d’origine','compense'),('Utilisé sur une autre facture','utilise'),('Remboursé','rembourse'),('Solde disponible','disponible')]:
+            fin.append(p(titre+' : '+M(suivi[champ])+' '+cfg['devise']))
+        for usage in suivi['utilisations']:
+            fin.append(p(D(usage['jour'])+' · '+usage['numero']+' · '+M(usage['montant_centiemes'])+' '+cfg['devise']))
     if typ == 'facture' and s.get('reglements') is not None:
         reglements = s['reglements']
         fin.append(p(('Payments received' if anglais else 'Règlements reçus') + ' : ' + M(reglements['paye']) + ' ' + cfg['devise']))
