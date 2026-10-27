@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from version import VERSION_ANDROID
 root=Path(__file__).resolve().parents[1]
@@ -14,9 +15,13 @@ apk=dossier/f'Patenteasy-Android-{VERSION_ANDROID}-A-SIGNER.apk'
 jar=dossier/'apksigner.jar'
 bt=Path(os.environ['ANDROID_SDK_ROOT'])/'build-tools/35.0.0'
 badging=subprocess.check_output([str(bt/'aapt'),'dump','badging',str(apk)],text=True)
-if f"versionName='{VERSION_ANDROID}'" not in badging or "name='pf.ska987.patenteasy.local'" not in badging or "versionCode='13'" not in badging:
+if f"versionName='{VERSION_ANDROID}'" not in badging or "name='pf.ska987.patenteasy.local'" not in badging or "versionCode='14'" not in badging:
     raise SystemExit('Identité Android incorrecte.')
-manifeste={'version':VERSION_ANDROID,'versionCode':13,'package':'pf.ska987.patenteasy.local',
+with zipfile.ZipFile(apk) as archive:
+    cle = json.loads(archive.read('assets/licence_editeur.json'))['cle_publique_ed25519']
+    if cle != 'JYN0UatgXCsf8FNSBSTxqzS0E2R/VzD3F3gXTtSFGtU=':
+        raise SystemExit('Clé publique de licence absente ou obsolète dans l’APK.')
+manifeste={'cle_publique_licence':cle,'version':VERSION_ANDROID,'versionCode':14,'package':'pf.ska987.patenteasy.local',
            'source':os.environ.get('GITHUB_SHA',''), 'signature':'requise',
            'taille':apk.stat().st_size,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest(),
            'apksigner_sha256':hashlib.sha256(jar.read_bytes()).hexdigest()}

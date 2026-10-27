@@ -1,7 +1,7 @@
-## 0.4.6 — 2026-10-27 (Windows)
+## 0.4.6 — 2026-10-27 (Windows et Android)
 
 - Nouvelle clé publique de licence SKA : compatible avec les licences émises après la remise à zéro du gestionnaire 0.2.0.
-- Les données et les corrections de la version 0.4.5 sont conservées. Android installé reste en 0.4.4 et nécessite une reconstruction séparée pour la nouvelle clé.
+- Les données et les corrections Windows de la version 0.4.5 sont conservées. Android reçoit la nouvelle clé et le numéro de version 0.4.6 (code 14) ; les fonctions de ventes directes et d’imputation d’avoirs restent propres à Windows.
 
 ## 0.4.5 — 2026-10-27 (Windows)
 

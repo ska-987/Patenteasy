@@ -1,4 +1,4 @@
-name: Patenteasy Windows 0.4.6 · ventes directes et avoirs
+name: Patenteasy 0.4.6 · licences Windows et Android
 on:
   push:
     branches: ['release/windows-0.4.6']
@@ -80,5 +80,52 @@ jobs:
         with:
           name: Patenteasy-Windows-0.4.6
           path: distribution/sortie/*
+          if-no-files-found: error
+          retention-days: 30
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: SDK et dépendances de test
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          npm install --prefix "$RUNNER_TEMP/mobile-tests" linkedom@0.18.12 playwright@1.58.2
+          "$RUNNER_TEMP/mobile-tests/node_modules/.bin/playwright" install --with-deps chromium
+          curl --fail --location --output "$RUNNER_TEMP/json.jar" https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
+      - name: Modèle, interface et protection native
+        timeout-minutes: 5
+        env:
+          NODE_PATH: ${{ runner.temp }}/mobile-tests/node_modules
+          PATENTEASY_TEST_JSON_JAR: ${{ runner.temp }}/json.jar
+        run: |
+          node --test android/tests/mobile_model.test.cjs
+          node android/tests/interface_dom.test.cjs
+          timeout 120s node android/tests/interface.test.cjs
+          python android/tests/run_tests.py
+      - name: Préparer l’APK avec le SDK officiel
+        run: |
+          python android/compiler_apk.py --unsigned
+          cp "$ANDROID_SDK_ROOT/build-tools/35.0.0/lib/apksigner.jar" android/build/
+          python distribution/manifeste_android.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Patenteasy-Android-0.4.6-A-SIGNER
+          path: |
+            android/build/*-A-SIGNER.apk
+            android/build/apksigner.jar
+            android/build/android-verifie.json
           if-no-files-found: error
           retention-days: 30
