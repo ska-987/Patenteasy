@@ -1,7 +1,7 @@
 name: Patenteasy 0.4.6 · licences Windows et Android
 on:
   push:
-    branches: ['release/windows-0.4.6']
+    branches: ['release/beta-0.4.6']
   workflow_dispatch:
 permissions:
   contents: read
