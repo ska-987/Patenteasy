@@ -36,7 +36,7 @@ def verifier(rapport):
             assert manager.base.obtenir_entreprise()['nom']=='Copie modifiée pour le test'
             manager.coffre.verrouiller()
             assert avant=={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in data.iterdir()}
-            assert json.loads((test/'data'/'acces.json').read_text())['sauvegardes']['dossier']==str(test/'sauvegardes')
+            assert Path(json.loads((test/'data'/'acces.json').read_text())['sauvegardes']['dossier']).resolve()==(test/'sauvegardes').resolve()
             try:copier(data,test/'data')
             except ValueError:pass
             else:raise AssertionError('La copie de test existante a été remplacée')
