@@ -23,6 +23,14 @@ for(const role of ['admin','utilisateur']){
   evalJS('interfaceMobile.facture(base.donnees.factures[0].id)');assert.match(content(),/Règlement actualisé/);assert.equal(doc.querySelector('th').textContent,'Référence');doc.getElementById('pdf').onclick();assert.match(pdfExporte,/Règlement actualisé/);const donneesPdf=JSON.parse(pdfExporte);assert.equal(donneesPdf.document.lignes[0].reference,'MO');assert.equal(donneesPdf.conditions.reglement,'Règlement actualisé');checks+=4;
   evalJS('interfaceMobile.devisForm()');doc.querySelector('#form [name=objet]').value='Objet à conserver';doc.getElementById('nouveau-client-devis').onclick();doc.querySelector('#client-modal [name=nom]').value='Nouveau depuis devis';doc.querySelector('#client-modal [name=email]').value='a@example.com';doc.getElementById('dialog-ok').onclick();assert.equal(doc.querySelector('#form [name=objet]').value,'Objet à conserver');assert.equal(donnees.clients.at(-1).nom,'Nouveau depuis devis');assert.equal(donnees.devis.at(-1).clientId,donnees.clients.at(-1).id);assert.equal(doc.querySelector('#form [name=reglement]'),null);checks+=4;
  }
+ if(role==='admin'){
+  evalJS("gestion.base.transaction(s=>s.entreprise.banques=['Socredo']);interfaceMobile.journal()");
+  assert.equal(doc.querySelectorAll('thead th').length,5);
+  assert.ok([...doc.querySelectorAll('select[name=banque] option')].some(o=>o.textContent==='Socredo'));
+  evalJS("gestion.operation({date:jour(),libelle:'Achat banque',type:'depense',montant:100,banque:'Socredo'});interfaceMobile.journal()");
+  assert.match(doc.querySelector('tbody').textContent,/Socredo/);checks+=3;
+  evalJS("interfaceMobile.devis()");assert.ok(doc.querySelector('.statut-violet'));checks++;
+ }
  const snapshot=evalJS('JSON.stringify(base.donnees.factures[0].instantane)');
  evalJS("gestion.paiement(base.donnees.factures[0].id,jour(),100000,'virement');interfaceMobile.facture(base.donnees.factures[0].id)");
  assert.match(doc.querySelector('.document .reglements').textContent,/Règlements reçus.*1[ \u00a0\u202f]000,00.*Reste à régler.*1[ \u00a0\u202f]500,00/);checks++;

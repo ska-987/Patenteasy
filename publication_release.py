@@ -18,7 +18,7 @@ CERTIFICAT_ANDROID = 'cfc8d95ee97be9a7a80eca28de72178d7e9cd01236dc8187c69ba1c60f
 def verifier_apk(dossier, manifeste_windows):
     dossier = Path(dossier)
     manifeste = json.loads((dossier / 'android-verifie.json').read_text(encoding='utf-8'))
-    if (manifeste['version'] != VERSION_ANDROID or manifeste['versionCode'] != 14
+    if (manifeste['version'] != VERSION_ANDROID or manifeste['versionCode'] != 15
             or manifeste['package'] != 'pf.ska987.patenteasy.local'
             or not manifeste.get('source') or manifeste['source'] != manifeste_windows.get('source')):
         raise ValueError('Les deux applications doivent provenir du même commit vérifié.')
@@ -81,10 +81,10 @@ def preparer(dossier):
     versions = {
         'windows': {'version': VERSION, 'url': serveur + '/fichiers/' + programme.name,
                     'sha256': h.hexdigest(), 'taille': taille, 'format': 'exe',
-                    'notes': 'Bêta 0.4.5.1 : nouvelle clé de licence SKA, factures directes et gestion des avoirs.'},
+                    'notes': 'Bêta 0.4.6 : finances TTC en franchise, livre de comptes, banques et statuts colorés.'},
         'android': {'version': VERSION_ANDROID, 'url': serveur + '/fichiers/' + apk.name,
                     'sha256': empreinte_apk, 'taille': taille_apk, 'format': 'apk',
-                    'notes': 'Bêta 0.4.5.1 : nouvelle clé de licence SKA.'}
+                    'notes': 'Bêta 0.4.6 : journal recettes/dépenses, banque ou espèces et repères des documents.'}
     }
     canonique = json.dumps(versions, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
     catalogue = {'versions': versions, 'signature': base64.b64encode(cle.sign(canonique)).decode('ascii')}

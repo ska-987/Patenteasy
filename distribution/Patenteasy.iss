@@ -1,7 +1,7 @@
 #if FileExists(SourcePath + "\..\edition-dev.json")
   #error Utiliser Patenteasy-Dev.iss pour la branche de developpement.
 #endif
-#define MyAppVersion "0.4.5.1"
+#define MyAppVersion "0.4.6"
 [Setup]
 AppId={{22CBB249-971D-4915-A2CC-59A2663E80BD}
 AppName=Patenteasy

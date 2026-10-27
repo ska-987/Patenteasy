@@ -120,3 +120,26 @@ def test_ttc_reprise_mensuelle_sans_double_compte_ni_prorata_invente(base):
     partiel=s.calculer(f'{annee}-01-15',f'{annee}-01-20','franchise')
     assert partiel['recettes_ttc']==partiel['depenses_ttc']==0
     assert any('partiellement' in a for a in partiel['alertes'])
+
+
+def test_operation_manuelle_compte_et_colonnes(base,app):
+    import qt_app as ui
+    f,j,_=base
+    db.enregistrer_debut_activite(j)
+    g.enregistrer_banques(['Socredo'])
+    d=ui.OperationDialog()
+    assert d.banque.findData('Socredo')>=0
+    d.date.setDate(ui.qdate_from_iso(j));d.libelle.setText('Achat test');d.montant.setText('100')
+    d.type.setCurrentIndex(d.type.findData('depense'));d.banque.setCurrentIndex(d.banque.findData('Espèces / caisse'))
+    ident=db.ajouter_operation(*d.values())
+    assert db.obtenir_operation(ident)['banque']=='Espèces / caisse'
+    modification=ui.OperationDialog(db.obtenir_operation(ident))
+    assert modification.banque.currentData()=='Espèces / caisse'
+    modification.banque.setCurrentIndex(modification.banque.findData('Socredo'))
+    db.modifier_operation(ident,*modification.values())
+    assert db.obtenir_operation(ident)['banque']=='Socredo'
+    page=ui.JournalPage();page.refresh()
+    ligne=next(r for r in range(page.table.rowCount()) if page.table.item(r,0).data(ui.Qt.UserRole)==ident)
+    assert page.table.item(ligne,2).text()=='' and page.table.item(ligne,3).text()
+    assert page.table.item(ligne,4).text()=='Socredo'
+    for w in (d,modification,page):w.close();w.deleteLater()

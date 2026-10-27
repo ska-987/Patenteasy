@@ -1,3 +1,12 @@
+## 0.4.6 — Windows et Android
+
+- Windows : finances TTC en franchise, banques, livre de comptes à deux colonnes et saisie banque/espèces.
+- Devis et factures : repères de couleur avec statut écrit.
+- Android : livre de comptes à deux colonnes, banques dans Réglages et choix banque/espèces aux opérations et règlements.
+- Android : mention franchise en base au tableau de bord et couleurs des documents.
+- Conservation des données installées. La base TEST reste indépendante, sans import automatique.
+- Factures directes et gestion avancée des avoirs restent propres à Windows.
+
 ## En cours de développement — Windows TEST
 
 - Couleurs et statuts lisibles des devis et factures, dates limites visibles, mêmes repères sur le tableau de bord.
