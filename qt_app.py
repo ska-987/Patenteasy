@@ -689,10 +689,20 @@ class OperationDialog(FormDialog):
         self.form.addRow(tr("Date"), self.date)
         self.form.addRow(tr("Libellé"), self.libelle)
         self.form.addRow(tr("Type"), self.type)
+        self.banque = QComboBox()
+        self.banque.addItem("Non renseigné", "")
+        self.banque.addItem("Espèces / caisse", "Espèces / caisse")
+        for nom in g.banques():
+            self.banque.addItem(nom, nom)
+        ancienne = data.get("banque", "")
+        if ancienne and self.banque.findData(ancienne) < 0:
+            self.banque.addItem(ancienne, ancienne)
+        self.banque.setCurrentIndex(max(0, self.banque.findData(ancienne)))
+        self.form.addRow("Banque ou espèces", self.banque)
         self.form.addRow(tr("Montant · " + regional.configuration()["devise"] + ""), self.montant)
 
     def values(self):
-        return iso_date(self.date), self.libelle.text(), self.type.currentData(), self.montant.text()
+        return iso_date(self.date), self.libelle.text(), self.type.currentData(), self.montant.text(), self.banque.currentData()
 
 
 class QuoteCreateDialog(FormDialog):

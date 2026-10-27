@@ -145,6 +145,8 @@ class BaseDonnees:
                     CHECK (montant_centiemes > 0)
             )
         """)
+            if "banque" not in {col[1] for col in connexion.execute("PRAGMA table_info(operations)")}:
+                connexion.execute("ALTER TABLE operations ADD COLUMN banque TEXT NOT NULL DEFAULT ''")
             connexion.execute("""
             CREATE TABLE IF NOT EXISTS devis (
                 id INTEGER PRIMARY KEY,
@@ -626,7 +628,7 @@ class BaseDonnees:
             debut_tva = date(jour.year, jour.month + 1, 1)
         return debut_tva.strftime('%d/%m/%Y')
 
-    def ajouter_operation(self, date_operation, libelle, type_operation, montant):
+    def ajouter_operation(self, date_operation, libelle, type_operation, montant, banque=''):
         date_texte = self.verifier_date_fiscale(date_operation, 'Date de l’opération')
         if not date_texte:
             raise ValueError('La date est obligatoire.')
@@ -658,10 +660,10 @@ class BaseDonnees:
                 date_operation,
                 libelle,
                 type_operation,
-                montant_centiemes
+                montant_centiemes, banque
             )
-            VALUES (?, ?, ?, ?)
-            """, (date_texte, libelle, type_operation, montant_centiemes))
+            VALUES (?, ?, ?, ?, ?)
+            """, (date_texte, libelle, type_operation, montant_centiemes, banque.strip()))
             return curseur.lastrowid
 
     def lister_operations(self, annee):
@@ -696,7 +698,7 @@ class BaseDonnees:
             if curseur.rowcount == 0:
                 raise ValueError('Opération introuvable.')
 
-    def modifier_operation(self, operation_id, date_operation, libelle, type_operation, montant):
+    def modifier_operation(self, operation_id, date_operation, libelle, type_operation, montant, banque=None):
         from coffre import ACTIF
         if ACTIF is not None and ACTIF.compte.get('role') != 'admin':
             raise PermissionError('Action réservée à l’administrateur.')
@@ -733,9 +735,10 @@ class BaseDonnees:
             SET date_operation = ?,
                 libelle = ?,
                 type_operation = ?,
-                montant_centiemes = ?
+                montant_centiemes = ?,
+                banque = COALESCE(?, banque)
             WHERE id = ?
-            """, (date_texte, libelle, type_operation, montant_centiemes, operation_id))
+            """, (date_texte, libelle, type_operation, montant_centiemes, banque.strip() if banque is not None else None, operation_id))
             if curseur.rowcount == 0:
                 raise ValueError('Opération introuvable.')
 
