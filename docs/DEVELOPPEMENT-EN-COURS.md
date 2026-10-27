@@ -12,6 +12,10 @@ Le numéro actuel est conservé et la fenêtre indique **TEST · copie indépend
 
 ## Corrections à vérifier
 
+- Devis : bleu en cours, rouge hors délai, vert accepté, violet facturé, gris brouillon/refusé. Un devis accepté ne devient pas hors délai après coup.
+- Factures : orange à régler/règlement partiel, rouge en retard tant qu’un solde reste dû, vert réglée ou soldée avec avoir. Les avoirs restent distincts, en violet.
+- Les couleurs suivent les lignes après tri ou recherche, fonctionnent dans les thèmes clair/sombre et sont doublées d’un statut écrit. Le délai est recalculé au changement de date, sans modifier les documents.
+
 - Franchise en base : montant TTC des dépenses, recettes et différence de trésorerie ; pas de détail TVA inutile. Le régime par défaut vient du choix dans **Taxe et CA**. Un choix historique de période dans Finances ne modifie pas les factures émises.
 - Dans **Réglages → Mes banques**, saisir un nom par ligne et enregistrer.
 - À l'encaissement ou au règlement fournisseur : sélectionner une banque et, si utile, une référence de chèque ou de virement. La banque reste facultative, les espèces restent en caisse.

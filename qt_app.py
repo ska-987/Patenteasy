@@ -7,6 +7,7 @@ PySide6 appellent directement la couche métier SQLite existante.
 """
 from __future__ import annotations
 from localisation import tr
+from statuts_documents import statut_devis,statut_facture
 
 import os
 import subprocess
@@ -410,6 +411,52 @@ def fill_table(table: QTableWidget, rows: list[list[object]], ids: list[int] | N
                 item.setData(Qt.ItemDataRole.UserRole, ids[r])
             table.setItem(r, c, item)
     table.setSortingEnabled(True)
+
+
+def colorer_statuts(table, colonne, statuts, sombre=None):
+    """Appliquer par identifiant : le tri des lignes ne doit pas déplacer les couleurs."""
+    from PySide6.QtGui import QColor
+    table._statuts_documents=(colonne,statuts)
+    if sombre is None:
+        fenetre=table.window()
+        sombre=hasattr(fenetre,'gestion_comptes') and fenetre.gestion_comptes.preferences().get('theme')=='Sombre'
+    palettes={
+        'bleu': ('#eaf2ff','#174a8b','#1c3351','#b9d7ff'),
+        'orange':('#fff3da','#784600','#493617','#ffdb94'),
+        'rouge':('#ffebeb','#9a2323','#4b242b','#ffb8bf'),
+        'vert':('#e7f5ec','#205c36','#203f31','#ade7c3'),
+        'violet':('#f1ebff','#603a91','#372d4c','#d7c0ff'),
+        'neutre':('#edf0f4','#465264','#2c3441','#d5dce6'),
+    }
+    for row in range(table.rowCount()):
+        premier=table.item(row,0)
+        if premier is None:continue
+        info=statuts.get(premier.data(Qt.ItemDataRole.UserRole))
+        if info is None:continue
+        couleurs=palettes.get(info['code'],palettes['neutre'])
+        fond,texte=couleurs[2:] if sombre else couleurs[:2]
+        for col in range(table.columnCount()):
+            item=table.item(row,col)
+            if item is not None:
+                item.setBackground(QColor(fond));item.setForeground(QColor(texte));item.setToolTip(info['libelle']+' · '+info['detail'])
+        item=table.item(row,colonne)
+        if item is not None:
+            police=item.font();police.setBold(True);item.setFont(police)
+            item.setData(Qt.ItemDataRole.AccessibleTextRole,info['libelle']+' · '+info['detail'])
+            item.setData(Qt.UserRole+20,info['code'])
+
+
+def legende_statuts(layout,texte):
+    label=QLabel(texte);label.setWordWrap(True);layout.addWidget(label)
+
+
+def suivre_dates_documents(page):
+    page._jour_statuts=g.aujourd_hui()
+    timer=QTimer(page);timer.setInterval(60_000)
+    def verifier_date():
+        if page.isVisible() and page._jour_statuts!=g.aujourd_hui():
+            page._jour_statuts=g.aujourd_hui();page.refresh()
+    timer.timeout.connect(verifier_date);timer.start();page._timer_statuts=timer
 
 
 def selected_id(table: QTableWidget) -> int | None:
@@ -953,7 +1000,7 @@ class DashboardPage(Page):
         grid = QGridLayout()
         self.unpaid = QTableWidget()
         self.unpaid.doubleClicked.connect(self.open_invoice)
-        configure_table(self.unpaid, [tr("Facture / client"), tr("Reste dû"), tr("Échéance")])
+        configure_table(self.unpaid, [tr("Facture / client"), tr("Reste dû"), tr("Échéance"),tr("État")])
         self.reminders = QTableWidget()
         configure_table(self.reminders, [tr("Échéance"), tr("Rappel")])
         box1 = QGroupBox(tr("Factures à encaisser"))
@@ -970,6 +1017,7 @@ class DashboardPage(Page):
         l3 = QVBoxLayout(box3); l3.addWidget(self.quotes)
         self.layout.addWidget(box3)
         self.layout.addStretch()
+        suivre_dates_documents(self)
 
     def open_invoice(self):
         ident = selected_id(self.unpaid)
@@ -1000,7 +1048,7 @@ class DashboardPage(Page):
         summary = db.obtenir_resume_annuel(current_year)
         docs = g.documents()
         unpaid = []
-        unpaid_ids=[]
+        unpaid_ids=[];statuts_impayes={}
         remaining = 0
         for d in docs:
             if d["type"] != "facture":
@@ -1009,7 +1057,8 @@ class DashboardPage(Page):
             if not rest:
                 continue
             client = json.loads(d["instantane"])["client"]["nom"]
-            unpaid.append([f'{d["numero"]} · {client}', fcfp(rest), d["echeance"]])
+            info=statut_facture(d,g.aujourd_hui());statuts_impayes[d["id"]]=info
+            unpaid.append([f'{d["numero"]} · {client}', fcfp(rest), d["echeance"],info["libelle"]])
             unpaid_ids.append(d["id"])
             remaining += rest
         self.m_recettes.value.setText(fcfp(summary["recettes"]))
@@ -1026,6 +1075,7 @@ class DashboardPage(Page):
             )
         self.m_treso.value.setText(fcfp(treasury) if treasury is not None else tr("À initialiser"))
         fill_table(self.unpaid, unpaid,unpaid_ids)
+        colorer_statuts(self.unpaid,3,statuts_impayes)
         reminders = g.liste("SELECT * FROM rappels WHERE fait=0 ORDER BY echeance LIMIT 8")
         lignes_rappels=[[x["echeance"],x["titre"]] for x in reminders]
         try:
@@ -1034,7 +1084,9 @@ class DashboardPage(Page):
         except PermissionError:pass
         fill_table(self.reminders,lignes_rappels)
         quotes = db.lister_devis()[:6]
-        fill_table(self.quotes, [[f'#{x["id"]}', x["nom_client"], x["objet"], x["statut"]] for x in quotes], [x["id"] for x in quotes])
+        statuts_devis={x["id"]:statut_devis(db.obtenir_devis(x["id"]),g.aujourd_hui()) for x in quotes}
+        fill_table(self.quotes, [[f'#{x["id"]}', x["nom_client"], x["objet"],statuts_devis[x["id"]]["libelle"]] for x in quotes], [x["id"] for x in quotes])
+        colorer_statuts(self.quotes,3,statuts_devis)
         alerts = list(summary.get("alertes", []))
         fiscal_reminder = g.rappel_seuil_ca(current_year)
         if fiscal_reminder:
@@ -1431,20 +1483,24 @@ class QuotesPage(Page):
         bar.addWidget(button(tr("Ouvrir le dossier PDF"), lambda: open_pdf_folder(self), secondary=True))
         bar.addStretch(); self.layout.addLayout(bar)
         self.recherche=QLineEdit();self.recherche.setPlaceholderText(tr("Rechercher par nom ou numéro"));self.recherche.textChanged.connect(lambda _texte:self.refresh());self.layout.addWidget(self.recherche)
-        self.table = QTableWidget(); configure_table(self.table, [tr("N°"), tr("Date"), tr("Client"), tr("Objet"), tr("État")])
+        self.table = QTableWidget(); configure_table(self.table, [tr("N°"), tr("Date"), tr("Client"), tr("Objet"), tr("Valable jusqu’au"), tr("État")])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)
+        legende_statuts(self.layout,"Bleu : en cours · Rouge : hors délai · Vert : accepté · Violet : facturé · Gris : brouillon ou refusé")
+        suivre_dates_documents(self)
 
     def refresh(self):
         rows = db.lister_devis()
         enriched = []
-        ids = []
+        ids = [];statuts={}
         for x in rows:
             d = db.obtenir_devis(x["id"])
             terme=self.recherche.text().casefold().strip()
             if terme and terme not in " ".join(str(v) for v in (d.get("numero",""),x["nom_client"],x["objet"],x["id"])).casefold():continue
-            enriched.append([d.get("numero") or f'Brouillon #{x["id"]}', x["date_devis"], x["nom_client"], x["objet"], x["statut"]])
+            info=statut_devis(d,g.aujourd_hui());statuts[x["id"]]=info
+            enriched.append([d.get("numero") or f'Brouillon #{x["id"]}', x["date_devis"], x["nom_client"], x["objet"],info["limite"],info["libelle"]])
             ids.append(x["id"])
         fill_table(self.table, enriched, ids)
+        colorer_statuts(self.table,5,statuts)
 
     def add(self):
         d = QuoteCreateDialog(self)
@@ -1584,8 +1640,10 @@ class InvoicesPage(Page):
         self.recherche.textChanged.connect(lambda _texte: self.refresh())
         bar = QHBoxLayout(); bar.addWidget(self.recherche); bar.addWidget(button(tr("Rechercher"), self.refresh)); bar.addWidget(button(tr("Ouvrir"), self.open, secondary=True)); bar.addWidget(button(tr("Ouvrir le dossier PDF"), lambda: open_pdf_folder(self), secondary=True))
         self.layout.addLayout(bar)
-        self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr("Date"), tr("Client"), tr("Total"), tr("Réglé"), tr("Reste / solde avoir"), tr("État")])
+        self.table = QTableWidget(); configure_table(self.table, [tr("Numéro"), tr("Date"), tr("Client"), tr("Total"), tr("Réglé"), tr("Reste / solde avoir"), tr("Échéance"), tr("État")])
         self.table.doubleClicked.connect(self.open); self.layout.addWidget(self.table)
+        legende_statuts(self.layout,"Orange : à régler · Rouge : en retard · Vert : réglée ou soldée · Violet : avoir")
+        suivre_dates_documents(self)
 
     def create_direct(self):
         if not exiger_admin(self):return
@@ -1612,7 +1670,7 @@ class InvoicesPage(Page):
         texte = self.recherche.text().strip()
         if not est_admin(self) and not texte:
             fill_table(self.table, [], []); return
-        rows=[]; ids=[]
+        rows=[]; ids=[];statuts={}
         for d in g.documents():
             if texte:
                 contenu_recherche=json.loads(d["instantane"])
@@ -1621,9 +1679,11 @@ class InvoicesPage(Page):
                 elif d["numero"].casefold()!=texte.casefold():continue
             if not est_admin(self) and d["type"] != "facture": continue
             content=json.loads(d["instantane"]); rest=(g.etat_avoir(d["id"])["disponible"] if d["type"]=="avoir" else max(0,d["total_centiemes"]-d["paye"]-d["credite"]))
-            rows.append([d["numero"], d["date_document"], content["client"]["nom"], fcfp(d["total_centiemes"]), fcfp(d["paye"]), fcfp(rest), g.etat_avoir(d["id"])["statut"] if d["type"]=="avoir" else ("Réglée" if rest==0 else "À régler")])
+            info=statut_facture(d,g.aujourd_hui(),g.etat_avoir(d["id"]) if d["type"]=="avoir" else None);statuts[d["id"]]=info
+            rows.append([d["numero"], d["date_document"], content["client"]["nom"], fcfp(d["total_centiemes"]), fcfp(d["paye"]), fcfp(rest), d["echeance"] if d["type"]=="facture" else "",info["libelle"]])
             ids.append(d["id"])
         fill_table(self.table, rows, ids)
+        colorer_statuts(self.table,7,statuts)
 
     def open(self):
         ident=selected_id(self.table)
@@ -2654,6 +2714,9 @@ class MainWindow(QMainWindow):
                 couleur=c.name();texte="#182336" if c.lightnessF()>0.6 else "white"
                 style+=f"\nQPushButton {{background:{couleur};color:{texte};}} QPushButton[secondary=\"true\"] {{background:#e8eef8;color:#182336;}} QPushButton[danger=\"true\"] {{background:#b91c1c;color:white;}}"
         QApplication.instance().setStyleSheet(style)
+        for table in self.findChildren(QTableWidget):
+            if hasattr(table,"_statuts_documents"):
+                col,etats=table._statuts_documents;colorer_statuts(table,col,etats)
         self.rafraichir_modules()
 
     def rafraichir_modules(self):

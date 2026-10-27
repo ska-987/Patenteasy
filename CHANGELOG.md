@@ -1,5 +1,7 @@
 ## En cours de développement — Windows TEST
 
+- Couleurs et statuts lisibles des devis et factures, dates limites visibles, mêmes repères sur le tableau de bord.
+
 - Affichage des finances TTC en franchise en base et saisie simplifiée des dépenses.
 - Banques nommées, choix lors des règlements, filtre et recherche dans le journal.
 - Installation TEST et copie chiffrée indépendantes de la base habituelle.
