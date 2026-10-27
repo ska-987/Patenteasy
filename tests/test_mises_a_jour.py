@@ -6,6 +6,14 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.exceptions import InvalidSignature
 import mises_a_jour as m
 
+def test_versions_correctives_quatre_nombres():
+    assert m.version('0.4.5') < m.version('0.4.5.1') < m.version('0.4.6')
+    assert m.version('0.4.5.1') < m.version('0.4.5.10')
+    assert m.version('0.4.5') == m.version('0.4.5.0')
+    for invalide in ('0.4', '0.4.5.1.2', '0.4.5-beta', '0.4.-5', '0.4.5.'):
+        with pytest.raises(ValueError):
+            m.version(invalide)
+
 def test_catalogue_authentique_et_modification_refusee():
     cle=Ed25519PrivateKey.generate();pub=base64.b64encode(cle.public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw)).decode()
     versions={'windows':{'version':'99.0.0','url':'https://example.org/installer.exe','sha256':'a'*64,'taille':123,'notes':'Test'}}

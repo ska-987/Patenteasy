@@ -33,8 +33,9 @@ def ouvrir_https(url, timeout):
     return ouvreur.open(requete,timeout=timeout)
 
 def version(v):
-    if not isinstance(v,str) or not re.fullmatch(r'\d+\.\d+\.\d+',v): raise ValueError('Version invalide.')
-    return tuple(map(int,v.split('.')))
+    if not isinstance(v,str) or not re.fullmatch(r'[0-9]+(?:\.[0-9]+){2,3}',v): raise ValueError('Version invalide.')
+    n = tuple(map(int,v.split('.')))
+    return n + (0,) * (4-len(n))
 
 
 def valider(enveloppe,cle,plateforme):

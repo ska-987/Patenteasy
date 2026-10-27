@@ -10,7 +10,7 @@ final class Catalogue {
         if(o instanceof JSONArray){JSONArray j=(JSONArray)o;StringBuilder b=new StringBuilder("[");for(int i=0;i<j.length();i++){if(i>0)b.append(',');b.append(canon(j.get(i)));}return b.append(']').toString();}
         if(o instanceof String)return quote((String)o);if(o instanceof Double||o instanceof Float)throw new SecurityException("Catalogue non entier.");return String.valueOf(o);
     }
-    static int comparer(String a,String b){if(!a.matches("[0-9]+\\.[0-9]+\\.[0-9]+")||!b.matches("[0-9]+\\.[0-9]+\\.[0-9]+"))throw new IllegalArgumentException("Version invalide.");String[] x=a.split("\\."),y=b.split("\\.");for(int i=0;i<3;i++){int c=Integer.compare(Integer.parseInt(x[i]),Integer.parseInt(y[i]));if(c!=0)return c;}return 0;}
+    static int comparer(String a,String b){if(!a.matches("[0-9]+(?:\\.[0-9]+){2,3}")||!b.matches("[0-9]+(?:\\.[0-9]+){2,3}"))throw new IllegalArgumentException("Version invalide.");String[] x=a.split("\\."),y=b.split("\\.");for(int i=0;i<4;i++){int c=new java.math.BigInteger(i<x.length?x[i]:"0").compareTo(new java.math.BigInteger(i<y.length?y[i]:"0"));if(c!=0)return c;}return 0;}
 
  static JSONObject versions(JSONObject catalogue,String publique) throws Exception {
    JSONObject versions=catalogue.getJSONObject("versions");

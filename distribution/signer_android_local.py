@@ -16,9 +16,9 @@ CERTIFICAT = 'cfc8d95ee97be9a7a80eca28de72178d7e9cd01236dc8187c69ba1c60ff7c119'
 def signer(dossier):
     dossier = Path(dossier).resolve()
     m = json.loads((dossier/'android-verifie.json').read_text(encoding='utf-8'))
-    if (m['version'], m['versionCode'], m['package']) != ('0.4.6', 14, 'pf.ska987.patenteasy.local'):
+    if (m['version'], m['versionCode'], m['package']) != ('0.4.5.1', 14, 'pf.ska987.patenteasy.local'):
         raise ValueError('Construction Android incorrecte.')
-    candidat = dossier/'Patenteasy-Android-0.4.6-A-SIGNER.apk'
+    candidat = dossier/'Patenteasy-Android-0.4.5.1-A-SIGNER.apk'
     jar = dossier/'apksigner.jar'
     if candidat.stat().st_size != m['taille'] or hashlib.sha256(candidat.read_bytes()).hexdigest() != m['sha256']:
         raise ValueError('APK incomplète ou modifiée.')
@@ -52,7 +52,7 @@ def signer(dossier):
             for nom in original.namelist():
                 if not nom.startswith('META-INF/') and original.read(nom) != final.read(nom):
                     raise ValueError('Le contenu de l’APK a changé pendant la signature.')
-        sortie = dossier/'Patenteasy-Android-0.4.6.apk'
+        sortie = dossier/'Patenteasy-Android-0.4.5.1.apk'
         shutil.copyfile(signe, sortie.with_suffix('.tmp'))
         sortie.with_suffix('.tmp').replace(sortie)
     print('APK signée et vérifiée :', sortie)

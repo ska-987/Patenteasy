@@ -81,10 +81,10 @@ def preparer(dossier):
     versions = {
         'windows': {'version': VERSION, 'url': serveur + '/fichiers/' + programme.name,
                     'sha256': h.hexdigest(), 'taille': taille, 'format': 'exe',
-                    'notes': 'Bêta 0.4.6 : nouvelle clé de licence SKA, factures directes et gestion des avoirs.'},
+                    'notes': 'Bêta 0.4.5.1 : nouvelle clé de licence SKA, factures directes et gestion des avoirs.'},
         'android': {'version': VERSION_ANDROID, 'url': serveur + '/fichiers/' + apk.name,
                     'sha256': empreinte_apk, 'taille': taille_apk, 'format': 'apk',
-                    'notes': 'Bêta 0.4.6 : nouvelle clé de licence SKA.'}
+                    'notes': 'Bêta 0.4.5.1 : nouvelle clé de licence SKA.'}
     }
     canonique = json.dumps(versions, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
     catalogue = {'versions': versions, 'signature': base64.b64encode(cle.sign(canonique)).decode('ascii')}
