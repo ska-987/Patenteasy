@@ -109,7 +109,7 @@ def test_premier_export_cree_dossier_et_memorise(app,export_dir,monkeypatch):
     monkeypatch.setattr(QFileDialog,'exec',enregistrer)
     p=exports_pdf.enregistrer(None,b'%PDF-test','fact-00001.pdf')
     q=exports_pdf.enregistrer(None,b'%PDF-test-2','dev-00001.pdf')
-    assert p==bureau/'Patenteasy'/'fact-00001.pdf' and p.read_bytes()==b'%PDF-test'
+    assert p==bureau/('Patenteasy-TEST' if __import__('edition').DEVELOPPEMENT else 'Patenteasy')/'fact-00001.pdf' and p.read_bytes()==b'%PDF-test'
     assert q.parent==p.parent and q.read_bytes()==b'%PDF-test-2'
     assert asked==[1] and Path(settings.value('exports_pdf/dossier'))==p.parent
     assert [Path(x) for x in defaults]==[p,q]
@@ -119,12 +119,12 @@ def test_export_choix_autre_dossier_et_annulation(app,export_dir,tmp_path,monkey
     settings,bureau=export_dir;autre=tmp_path/'Mes documents';autre.mkdir()
     monkeypatch.setattr(QMessageBox,'exec',lambda _:QMessageBox.Cancel)
     assert exports_pdf.enregistrer(None,b'%PDF','fact.pdf') is None
-    assert not (bureau/'Patenteasy').exists() and not settings.value('exports_pdf/dossier')
+    assert not (bureau/('Patenteasy-TEST' if __import__('edition').DEVELOPPEMENT else 'Patenteasy')).exists() and not settings.value('exports_pdf/dossier')
     monkeypatch.setattr(QMessageBox,'exec',lambda _:QMessageBox.No)
     monkeypatch.setattr(QFileDialog,'getExistingDirectory',lambda *args:str(autre))
     monkeypatch.setattr(QFileDialog,'exec',lambda _:QDialog.Accepted)
     p=exports_pdf.enregistrer(None,b'%PDF','fact.pdf')
-    assert p.parent==autre and not (bureau/'Patenteasy').exists()
+    assert p.parent==autre and not (bureau/('Patenteasy-TEST' if __import__('edition').DEVELOPPEMENT else 'Patenteasy')).exists()
 
 
 def test_annuler_export_ne_remplace_aucun_pdf(app,export_dir,monkeypatch):

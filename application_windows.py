@@ -75,6 +75,15 @@ def lancer_assistant_mise_a_jour() -> int:
 
 
 def main():
+    from edition import DEVELOPPEMENT,repertoire as dossier_edition
+    if len(sys.argv)==3 and sys.argv[1]=='--self-test-dev':
+        from verification_dev import verifier
+        return verifier(sys.argv[2])
+    if DEVELOPPEMENT and '--self-test' not in sys.argv:
+        os.environ['PATENTEASY_DATA_DIR']=str(dossier_edition())
+        if any(x in sys.argv for x in ('--prepare-publication','--install-update')):
+            dialogue('Édition TEST : publication et mise à jour de production désactivées.')
+            return 1
     if len(sys.argv) == 3 and sys.argv[1] == "--prepare-publication":
         from publication_release import lancer
         return lancer(sys.argv[2])
@@ -87,7 +96,7 @@ def main():
         return lancer_assistant_mise_a_jour()
 
     os.environ["PATENTEASY_INSTALLE"] = "1"
-    repertoire = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "PatenteasyLocal"
+    repertoire = dossier_edition()
     repertoire.mkdir(parents=True, exist_ok=True)
     journaux = repertoire / "journaux"
     journaux.mkdir(exist_ok=True)
@@ -105,6 +114,12 @@ def main():
         if instance.deja_ouverte:
             dialogue("Patenteasy est déjà ouvert. Retrouvez sa fenêtre dans la barre des tâches.")
             return 0
+        if DEVELOPPEMENT:
+            from PySide6.QtWidgets import QApplication
+            app_test=QApplication.instance() or QApplication(sys.argv)
+            app_test.setQuitOnLastWindowClosed(False)
+            from donnees_test import premier_lancement
+            if not premier_lancement(repertoire,InstanceWindows):return 0
         from qt_app import run
         return run()
     except Exception:

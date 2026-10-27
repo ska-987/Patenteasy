@@ -7,7 +7,7 @@ import sys
 from decimal import Decimal, InvalidOperation
 from coffre import sqlite3
 from datetime import date
-BASE_DIR = Path(os.environ['PATENTEASY_DATA_DIR']) if os.environ.get('PATENTEASY_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'PatenteasyLocal' if getattr(sys, 'frozen', False) or os.environ.get('PATENTEASY_INSTALLE') == '1' else Path(__file__).resolve().parent
+BASE_DIR = Path(os.environ['PATENTEASY_DATA_DIR']) if os.environ.get('PATENTEASY_DATA_DIR') else __import__('edition').repertoire() if getattr(sys, 'frozen', False) or os.environ.get('PATENTEASY_INSTALLE') == '1' else Path(__file__).resolve().parent
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR = BASE_DIR / 'data'
 DB_PATH = DATA_DIR / 'patenteeasy.db'

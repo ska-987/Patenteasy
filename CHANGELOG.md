@@ -1,3 +1,10 @@
+## En cours de développement — Windows TEST
+
+- Affichage des finances TTC en franchise en base et saisie simplifiée des dépenses.
+- Banques nommées, choix lors des règlements, filtre et recherche dans le journal.
+- Installation TEST et copie chiffrée indépendantes de la base habituelle.
+- Version courante conservée ; aucune publication sur Cloudflare.
+
 ## 0.4.5.1 — 2026-10-27 (Windows et Android)
 
 - Versions à trois ou quatre nombres prises en charge. Première installation de 0.4.5.1 manuelle depuis une ancienne version à trois nombres.

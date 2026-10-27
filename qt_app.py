@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QTabWidget,
     QTextEdit,
+    QPlainTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -468,9 +469,9 @@ def export_journal_csv(parent) -> Path | None:
         return None
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
-    writer.writerow([tr("Date"), tr("Libellé"), tr("Type"), "Montant " + regional.configuration()["devise"]])
+    writer.writerow([tr("Date"), tr("Libellé"), tr("Type"), "Montant " + regional.configuration()["devise"],"Banque"])
     for op in db.lister_operations(g.aujourd_hui().year):
-        writer.writerow([op["date_operation"], op["libelle"], op["type_operation"], money_text(op["montant_centiemes"])])
+        writer.writerow([op["date_operation"], op["libelle"], op["type_operation"], money_text(op["montant_centiemes"]),op.get("banque","")])
     Path(path).write_text("\ufeff" + output.getvalue(), encoding="utf-8")
     show_info(parent, f"Journal exporté :\n{path}")
     return Path(path)
@@ -753,13 +754,22 @@ class PaymentDialog(FormDialog):
         self.mode = QComboBox()
         for text, key in [(tr("Virement"), "virement"), (tr("Carte"), "carte"), (tr("Espèces"), "especes"), (tr("Chèque"), "cheque"), (tr("Autre"), "autre")]:
             self.mode.addItem(text, key)
+        self.banque = QComboBox();self.banque.addItem('Non renseignée', '')
+        for nom in g.banques(): self.banque.addItem(nom,nom)
+        self.banque.setToolTip('Noms uniquement, à ajouter dans Réglages → Mes banques.')
+        def adapter_banque():
+            espece=self.mode.currentData()=='especes'
+            self.banque.setEnabled(not espece)
+            if espece: self.banque.setCurrentIndex(0)
+        self.mode.currentIndexChanged.connect(adapter_banque)
         self.reference = QLineEdit()
         self.reference.setVisible(not refund)
         self.form.addRow(tr("Date"), self.date)
         self.form.addRow(tr("Montant · " + regional.configuration()["devise"] + ""), self.amount)
         self.form.addRow(tr("Moyen"), self.mode)
         if not refund:
-            self.form.addRow(tr("Référence"), self.reference)
+            self.form.addRow(tr("Banque de la société (facultatif)"), self.banque)
+            self.form.addRow(tr("Référence du règlement (facultatif)"), self.reference)
 
     def values(self):
         return iso_date(self.date), self.amount.text(), self.mode.currentData(), self.reference.text()
@@ -910,6 +920,7 @@ class DashboardPage(Page):
         self.donation_button.setObjectName("donationButton")
         self.donation_button.setToolTip("Soutenir ska_987 sur PayPal — contribution facultative")
         self.update_button = button(tr("Mettre à jour"), lambda: demander_verification(self), secondary=True)
+        if __import__('edition').DEVELOPPEMENT:self.update_button.hide()
         links = QVBoxLayout()
         for widget in (self.donation_button, self.update_button):
             widget.setMinimumWidth(190)
@@ -978,10 +989,12 @@ class DashboardPage(Page):
         try:
             etat=pro.licence.etat()
             marquer_module(self.bouton_finances, 'Finances et TVA', 'finance_tva', etat)
+            regime_annuel=g.regime_a_la_date(g.aujourd_hui().isoformat())
             if etat['active'] and 'finance_tva' in etat['modules']:
                 aujourdhui=g.aujourd_hui().isoformat();r=pro.calculer(aujourdhui[:8]+'01',aujourdhui,(db.obtenir_fiscalite_annuelle(g.aujourd_hui().year) or {}).get('regime_confirme',''),0)
                 self.finance_annuelle.setText('Mois en cours • TVA perçue : '+money_text(r['tva_percue'])+' • TVA déductible : '+money_text(r['tva_deductible'])+' • À reverser : '+money_text(r['a_reverser'])+'\nConfirmez le régime de la période et le crédit antérieur dans Finances.')
             else:self.finance_annuelle.setText('Finances et TVA • '+etat['message'])
+            if regime_annuel=='franchise': self.finance_annuelle.setText('Franchise en base · Montants TTC · TVA non collectée et non déductible.'+('\nMois en cours : recettes '+money_text(r['recettes_ttc'])+' · dépenses '+money_text(r['depenses_ttc']) if etat['active'] and 'finance_tva' in etat['modules'] else ''))
         except Exception as erreur:self.finance_annuelle.setText(str(erreur))
         current_year = g.aujourd_hui().year
         summary = db.obtenir_resume_annuel(current_year)
@@ -1465,7 +1478,7 @@ class InvoiceDialog(QDialog):
         self.heading = QLabel(); self.heading.setObjectName("title"); self.heading.setWordWrap(True); root.addWidget(self.heading)
         self.metrics = QLabel(); self.metrics.setObjectName("lead"); self.metrics.setWordWrap(True); root.addWidget(self.metrics)
         self.lines = QTableWidget(); configure_table(self.lines, [tr("Référence"), tr("Désignation"), tr("Quantité"), tr("Prix HT"), tr("Total HT")]); root.addWidget(self.lines, 1)
-        self.payments = QTableWidget(); configure_table(self.payments, [tr("Date"), tr("Montant"), tr("Moyen"), tr("Référence")])
+        self.payments = QTableWidget(); configure_table(self.payments, [tr("Date"), tr("Montant"), tr("Moyen"), tr("Référence"), tr("Banque")])
         box = QGroupBox(tr("Paiements enregistrés")); boxl = QVBoxLayout(box); boxl.addWidget(self.payments); root.addWidget(box)
         self.conditions = DocumentConditions(self)
         root.addWidget(self.conditions)
@@ -1487,7 +1500,7 @@ class InvoiceDialog(QDialog):
         self.heading.setText(f'{d["numero"]} · {c["client"]["nom"]}')
         self.metrics.setText(f'Total {fcfp(d["total_centiemes"])} · Réglé {fcfp(d["paye"])} · Avoirs {fcfp(d["credite"])}' + (f' · Reste {fcfp(d["reste"])}' if d["type"] == "facture" else ""))
         fill_table(self.lines, [[x.get("reference", ""), x["designation"], f'{decimal_text(x["quantite_centiemes"])} {x["unite"]}', fcfp(x["prix_unitaire_centiemes"]), fcfp(x["ht"])] for x in c["lignes"]])
-        fill_table(self.payments, [[x["date_paiement"], fcfp(x["montant_centiemes"]), x["mode"], x["reference"]] for x in d["paiements"]])
+        fill_table(self.payments, [[x["date_paiement"], fcfp(x["montant_centiemes"]), x["mode"], x["reference"],x.get("banque","")] for x in d["paiements"]])
         self.conditions.refresh()
         self.pay_btn.setVisible(d["type"] == "facture" and d["reste"] > 0)
         self.credit_btn.setVisible(d["type"] == "facture" and d["credite"] < d["total_centiemes"])
@@ -1520,7 +1533,7 @@ class InvoiceDialog(QDialog):
         dlg = PaymentDialog(False, self)
         if dlg.exec():
             try:
-                day, amount, mode, ref = dlg.values(); g.payer(self.document_id, day, amount, mode, ref); QApplication.instance().fenetre_principale.gestion_comptes.tracer(tr("Encaissement client"), str(self.document_id)); self.refresh()
+                day, amount, mode, ref = dlg.values(); g.payer(self.document_id, day, amount, mode, ref, dlg.banque.currentData()); QApplication.instance().fenetre_principale.gestion_comptes.tracer(tr("Encaissement client"), str(self.document_id)); self.refresh()
             except Exception as exc: show_error(self, exc)
 
     def credit(self):
@@ -1629,13 +1642,23 @@ class JournalPage(Page):
         for m in [self.rec,self.dep,self.diff]:metrics.addWidget(m)
         self.layout.addLayout(metrics)
         self.alert=QLabel();self.alert.setWordWrap(True);self.layout.addWidget(self.alert)
-        self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr("Type"),tr("Montant")]);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
+        filtres=QHBoxLayout();self.banque_filtre=QComboBox();self.recherche=QLineEdit();self.recherche.setPlaceholderText('Facture, référence de virement ou chèque…')
+        filtres.addWidget(QLabel('Banque'));filtres.addWidget(self.banque_filtre);filtres.addWidget(self.recherche);self.layout.addLayout(filtres)
+        self.banque_filtre.currentIndexChanged.connect(self.refresh);self.recherche.textChanged.connect(self.refresh)
+        self.table=QTableWidget();configure_table(self.table,[tr("Date"),tr("Libellé"),tr("Type"),tr("Montant"),'Banque']);self.table.doubleClicked.connect(self.edit);self.layout.addWidget(self.table)
 
     def refresh(self,*_):
         from licences_pro import LicencePro
-        marquer_module(self.bouton_depenses, 'Dépenses détaillées HT / TVA / TTC', 'finance_tva', LicencePro(db.base).etat())
+        marquer_module(self.bouton_depenses, 'Dépenses TTC' if g.regime_a_la_date(g.aujourd_hui().isoformat())=='franchise' else 'Dépenses détaillées HT / TVA / TTC', 'finance_tva', LicencePro(db.base).etat())
         year=self.year.value(); summary=db.obtenir_resume_annuel(year);self.rec.value.setText(fcfp(summary["recettes"]));self.dep.value.setText(fcfp(summary["depenses"]));self.diff.value.setText(fcfp(summary["difference"]));self.alert.setText("\n".join("• "+a for a in summary.get("alertes",[])))
-        rows=db.lister_operations(year);fill_table(self.table,[[x["date_operation"],x["libelle"],x["type_operation"],fcfp(x["montant_centiemes"])] for x in rows],[x["id"] for x in rows])
+        rows=db.lister_operations(year)
+        choisie=self.banque_filtre.currentData() or ''
+        self.banque_filtre.blockSignals(True);self.banque_filtre.clear();self.banque_filtre.addItem('Toutes les banques','')
+        for nom in sorted(set(g.banques())|{x.get('banque','') for x in rows if x.get('banque')}): self.banque_filtre.addItem(nom,nom)
+        self.banque_filtre.setCurrentIndex(max(0,self.banque_filtre.findData(choisie)));self.banque_filtre.blockSignals(False)
+        needle=self.recherche.text().casefold()
+        rows=[x for x in rows if (not choisie or x.get('banque','')==choisie) and needle in (x['libelle']+' '+x.get('banque','')).casefold()]
+        fill_table(self.table,[[x["date_operation"],x["libelle"],x["type_operation"],fcfp(x["montant_centiemes"]),x.get('banque','')] for x in rows],[x["id"] for x in rows])
 
     def add(self):
         d=OperationDialog(parent=self)
@@ -1884,8 +1907,19 @@ class SettingsPage(Page):
         f.addRow(tr("Validité des devis · jours"),self.validity);f.addRow(tr("Conditions de vente (facultatif)"),self.terms);f.addRow(tr("Règlement (facultatif)"),self.payment);f.addRow(tr("Mentions complémentaires"),self.note);self.layout.addWidget(docs)
         self.conditions_status = QLabel();self.conditions_status.setWordWrap(True);f.addRow(self.conditions_status)
         tva=QGroupBox(tr("Taxe et trésorerie"));tf=QFormLayout(tva);self.period=QComboBox();self.period.addItem(tr("Non renseignée / sans déclaration"),"");self.period.addItem("Mensuelle","mensuelle");self.period.addItem("Trimestrielle","trimestrielle");self.balance_date=DateInput(optional=True);self.balance=QLineEdit();tf.addRow(tr("Fréquence des déclarations"),self.period);tf.addRow(tr("Date du solde de départ · " + regional.FORMATS[regional.configuration()["format_date"]]),self.balance_date);tf.addRow(tr("Solde banque + caisse · " + regional.configuration()["devise"] + ""),self.balance);self.layout.addWidget(tva);self.layout.addWidget(button(tr("Enregistrer les réglages"),self.save))
+        banques=QGroupBox('Mes banques');bf=QFormLayout(banques);self.banques=QPlainTextEdit();self.banques.setMaximumHeight(100)
+        self.banques.setPlaceholderText('Banque de Tahiti\nSocredo')
+        bf.addRow(QLabel('Un nom par ligne. Aucun RIB ni accès bancaire nécessaire.'))
+        bf.addRow('Noms des banques',self.banques);bf.addRow(button('Enregistrer mes banques',self.save_banques))
+        self.layout.addWidget(banques)
         actions=QHBoxLayout();actions.addWidget(button(tr("Sauvegarder la base"),lambda:backup_database(self)));actions.addWidget(button(tr("Exporter le journal CSV"),lambda:export_journal_csv(self),secondary=True));actions.addStretch();self.layout.addLayout(actions);self.layout.addStretch()
         self._conditions_loading = False
+
+    def save_banques(self):
+        try:
+            g.enregistrer_banques(self.banques.toPlainText().splitlines());self.banques.setPlainText('\n'.join(g.banques()))
+            show_info(self,'Banques enregistrées. Elles seront proposées au prochain règlement.')
+        except Exception as exc: show_error(self,exc)
 
     def conditions_edited(self):
         if self._conditions_loading: return
@@ -1917,6 +1951,7 @@ class SettingsPage(Page):
     def refresh(self):
         if not self.save_conditions(): return
         self._conditions_loading = True
+        self.banques.setPlainText('\n'.join(g.banques()))
         e=db.obtenir_entreprise() or {};self.validity.setValue(e.get('validite_devis_jours',30));self.terms.setPlainText(e.get('conditions_vente',''));self.payment.setPlainText(e.get('conditions_reglement',''));self.note.setPlainText(e.get('mention_complementaire',''));self.period.setCurrentIndex(max(0,self.period.findData(e.get('periodicite_tva',''))));self.balance_date.setDate(qdate_from_iso(e['date_solde_depart'])) if e.get('date_solde_depart') else self.balance_date.clear();self.balance.setText(money_text(e.get('solde_depart_centiemes',0)))
         self._conditions_loading = False
         self.conditions_status.setText(tr("Conditions enregistrées automatiquement."))
@@ -2270,7 +2305,7 @@ class MainWindow(QMainWindow):
         self.timer_updates.setInterval(250)
         self.timer_updates.timeout.connect(self.recevoir_updates)
         role = tr("Administrateur") if est_admin(self) else tr("Utilisateur")
-        self.setWindowTitle(f"Patenteasy {VERSION} — {self.compte_connecte['identifiant']} · {role}")
+        self.setWindowTitle(f"Patenteasy {'TEST · copie indépendante · ' if __import__('edition').DEVELOPPEMENT else ''}{VERSION} — {self.compte_connecte['identifiant']} · {role}")
         icon = ROOT / "static" / "patenteasy.ico"
         if icon.exists(): self.setWindowIcon(QIcon(str(icon)))
         self.resize(1320, 860)
@@ -2318,6 +2353,7 @@ class MainWindow(QMainWindow):
                 )
                 for key, label, cls in specs
             ]
+        if __import__('edition').DEVELOPPEMENT:specs=[s for s in specs if s[0]!='updates']
         for key,label,cls in specs:
             item=QListWidgetItem(label);item.setData(Qt.ItemDataRole.UserRole,key);self.nav.addItem(item);page=cls(self);page.navigate.connect(self.show_page);self.pages[key]=page;self.stack.addWidget(page)
         self.modules_navigation = {}
@@ -2342,6 +2378,9 @@ class MainWindow(QMainWindow):
         message=self.beta.etat_sauvegarde();self.alerte_sauvegarde.setText(message+" · Ouvrir les réglages");self.alerte_sauvegarde.setVisible(bool(message))
 
     def verifier_updates(self, manuel=False):
+        if __import__('edition').DEVELOPPEMENT:
+            if manuel:show_info(self,'Édition TEST : les mises à jour de production sont désactivées.')
+            return
         if self.verification_updates_en_cours:
             if manuel:
                 self.verification_updates_manuelle = True
@@ -2690,8 +2729,8 @@ class MainWindow(QMainWindow):
 def run() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     import localisation
-    localisation.ACTIVE=QSettings("ska_987","Patenteasy").value("langue","fr")
-    app.setApplicationName("Patenteasy")
+    localisation.ACTIVE=QSettings("ska_987","Patenteasy-TEST" if __import__("edition").DEVELOPPEMENT else "Patenteasy").value("langue","fr")
+    app.setApplicationName("Patenteasy-TEST" if __import__("edition").DEVELOPPEMENT else "Patenteasy")
     app.setOrganizationName("ska_987")
     app.setStyleSheet(APP_QSS)
 

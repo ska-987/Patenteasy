@@ -93,6 +93,12 @@ class GestionDocuments:
             date_mouvement TEXT NOT NULL, quantite_centiemes INTEGER NOT NULL,
             motif TEXT NOT NULL)""")
 
+            for table in ('paiements', 'operations'):
+                if 'banque' not in {row[1] for row in c.execute('PRAGMA table_info('+table+')')}:
+                    c.execute("ALTER TABLE "+table+" ADD COLUMN banque TEXT NOT NULL DEFAULT ''")
+            if 'banques_json' not in {row[1] for row in c.execute('PRAGMA table_info(entreprise)')}:
+                c.execute("ALTER TABLE entreprise ADD COLUMN banques_json TEXT NOT NULL DEFAULT '[]'")
+
         from finances_pro import migrer
         migrer(self.base)
 
@@ -382,11 +388,33 @@ class GestionDocuments:
                 return d
         raise ValueError('Document introuvable.')
 
-    def payer(self, identifiant, jour, montant, mode, reference):
+    def banques(self):
+        return json.loads((self.base.obtenir_entreprise() or {}).get('banques_json', '[]'))
+
+    def enregistrer_banques(self, noms):
+        if not isinstance(noms, list) or len(noms)>30:
+            raise ValueError('Indiquez au maximum 30 noms de banques.')
+        propres=[]
+        for nom in noms:
+            nom=' '.join(nom.split())
+            if not nom: continue
+            if len(nom)>100: raise ValueError('Nom de banque trop long (100 caractères maximum).')
+            if nom.casefold() not in [x.casefold() for x in propres]: propres.append(nom)
+        with self.connexion() as c:
+            c.execute('UPDATE entreprise SET banques_json=? WHERE id=1', (json.dumps(propres,ensure_ascii=False),))
+
+    def verifier_banque(self, banque, mode):
+        banque=banque.strip()
+        if banque and (banque not in self.banques() or mode=='especes'):
+            raise ValueError('Choisissez une banque enregistrée dans Réglages ; les espèces restent en caisse.')
+        return banque
+
+    def payer(self, identifiant, jour, montant, mode, reference, banque=''):
         jour = self.date_valide(jour)
         m = self.base.convertir_montant(montant)
         if mode not in ('virement', 'carte', 'especes', 'cheque', 'autre') or m <= 0:
             raise ValueError('Montant ou moyen de paiement invalide.')
+        banque = self.verifier_banque(banque, mode)
         cfg = regional.configuration(self.base.obtenir_entreprise())
         if mode == 'especes' and cfg['pays'] == 'PF' and cfg['devise'] == 'XPF' and m % (5 * 10 ** cfg['decimales']):
             raise ValueError('En espèces, saisissez le montant effectivement encaissé, multiple de 5 F CFP. Utilisez un ajustement documenté si nécessaire.')
@@ -400,8 +428,9 @@ class GestionDocuments:
             fin = f.get('date_fin_reprise', '')
             if fin and jour <= fin:
                 raise ValueError('Paiement compris dans la reprise : ne le saisissez pas une seconde fois. Corrigez d’abord la reprise.')
-            op = c.execute('INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes) VALUES(?,?,?,?)', (jour, 'Paiement ' + d['numero'], 'recette', m)).lastrowid
-            c.execute('INSERT INTO paiements(document_id,date_paiement,montant_centiemes,mode,reference,operation_id) VALUES(?,?,?,?,?,?)', (identifiant, jour, m, mode, reference.strip(), op))
+            libelle = 'Paiement ' + d['numero'] + (' · '+reference.strip() if reference.strip() else '') + (' · '+banque if banque else '')
+            op = c.execute('INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes,banque) VALUES(?,?,?,?,?)', (jour, libelle, 'recette', m, banque)).lastrowid
+            c.execute('INSERT INTO paiements(document_id,date_paiement,montant_centiemes,mode,reference,operation_id,banque) VALUES(?,?,?,?,?,?,?)', (identifiant, jour, m, mode, reference.strip(), op, banque))
 
     def creer_avoir(self, identifiant, motif, quantites=None):
         from coffre import ACTIF

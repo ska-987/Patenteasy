@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QLabel,QPushButton,QHBoxLayout,QVBoxLayout,QFormL
  QComboBox,QDateEdit,QCheckBox,QDialog,QDialogButtonBox,QTableWidget,QTableWidgetItem,
  QFileDialog,QMessageBox,QInputDialog,QPlainTextEdit)
 import database as db
+import gestion as g
 from finances_pro import FinancesPro
 from licences_pro import LicencePro
 from qt_app import Page, money_text, marquer_module
@@ -67,21 +68,33 @@ class LicencePage(Page):
         except Exception as e:QMessageBox.warning(self,'Licence',str(e))
 
 class AchatDialog(QDialog):
-    def __init__(self,parent=None):
+    def __init__(self,parent=None,franchise=False):
+        self.franchise=franchise
         super().__init__(parent);self.setWindowTitle('Dépense détaillée • HT / TVA / TTC');self.resize(1000,550)
         root=QVBoxLayout(self);f=QFormLayout();root.addLayout(f)
         self.fournisseur=QLineEdit();self.reference=QLineEdit();self.date=calendrier();self.livraison=calendrier();self.livre=QCheckBox('Biens livrés à cette date');self.justificatif=QCheckBox('Facture fournisseur conforme conservée');self.debits=QCheckBox('Débits : autorisation DICP / mention fournisseur confirmée')
         for label,w in [('Fournisseur',self.fournisseur),('Référence facture',self.reference),('Date facture',self.date),('Date livraison',self.livraison),('',self.livre),('',self.justificatif),('',self.debits)]:f.addRow(label,w)
         self.table=QTableWidget(0,8);self.table.setHorizontalHeaderLabels(['Libellé','HT','Taux %','TVA','TTC','Nature','Déductible %','Catégorie']);root.addWidget(self.table)
-        bouton(root,'Ajouter un taux / une ligne',self.ajouter)
+        bouton(root,'Ajouter une ligne' if self.franchise else 'Ajouter un taux / une ligne',self.ajouter)
         self.operation=combo([('Nouvelle dépense',None)]);
         with db.base.session() as c:
             for op in c.execute("SELECT * FROM operations o WHERE type_operation='depense' AND NOT EXISTS(SELECT 1 FROM paiements_achats_pro p WHERE p.operation_id=o.id) AND NOT EXISTS(SELECT 1 FROM remboursements r WHERE r.operation_id=o.id) ORDER BY date_operation DESC"):
                 self.operation.addItem(op['date_operation']+' • '+op['libelle']+' • '+money_text(op['montant_centiemes']),op['id'])
         f.addRow('Rapprocher un règlement existant',self.operation)
         self.paye=QLineEdit('0');self.date_paiement=calendrier();f2=QFormLayout();f2.addRow('Déjà réglé TTC',self.paye);f2.addRow('Date règlement',self.date_paiement);root.addLayout(f2)
+        self.mode_reglement=combo([('Virement','virement'),('Chèque','cheque'),('Carte','carte'),('Espèces','especes'),('Autre','autre')]);self.banque_reglement=combo([('Non renseignée','')]+[(n,n) for n in g.banques()])
+        f2.addRow('Moyen de règlement',self.mode_reglement);f2.addRow('Banque (facultatif)',self.banque_reglement)
+        def adapter_banque():
+            cash=self.mode_reglement.currentData()=='especes';self.banque_reglement.setEnabled(not cash)
+            if cash:self.banque_reglement.setCurrentIndex(0)
+        self.mode_reglement.currentIndexChanged.connect(adapter_banque)
         info=QLabel('Une ligne par taux. Renseignez TVA et TTC d’après la facture fournisseur. En franchise, aucune TVA ne sera déduite.');info.setWordWrap(True);root.addWidget(info)
         b=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel);b.accepted.connect(self.accept);b.rejected.connect(self.reject);root.addWidget(b);self.ajouter()
+        if self.franchise:
+            self.setWindowTitle('Dépense TTC · Franchise en base')
+            for col in (1,2,3,5,6):self.table.setColumnHidden(col,True)
+            for w in (self.livraison,self.livre,self.debits):f.setRowVisible(w,False)
+            info.setText('Franchise en base : saisissez le montant TTC payé au fournisseur, TVA comprise et non déductible.')
     def ajouter(self):
         r=self.table.rowCount();self.table.insertRow(r)
         for c,v in enumerate(['Dépense','0','16','0','0']):self.table.setItem(r,c,QTableWidgetItem(v))
@@ -93,17 +106,20 @@ class AchatDialog(QDialog):
         lignes=[]
         for r in range(self.table.rowCount()):
             def t(c):return self.table.item(r,c).text().strip()
+            if self.franchise:
+                ttc=montant(t(4));lignes.append({'libelle':t(0),'ht':ttc,'tva':0,'ttc':ttc,'taux':0,'nature':'service','deduction':0,'categorie':self.table.cellWidget(r,7).currentData()});continue
             nature=self.table.cellWidget(r,5).currentData()
             if nature=='debits' and not self.debits.isChecked():raise ValueError('Confirmez l’autorisation pour les débits.')
             if nature=='bien' and not self.livre.isChecked():raise ValueError('Confirmez la livraison réelle des biens.')
             lignes.append({'libelle':t(0),'ht':montant(t(1)),'taux':int(Decimal(t(2).replace(',','.'))*100),'tva':montant(t(3)),'ttc':montant(t(4)),'nature':nature,'deduction':int(Decimal(t(6).replace(',','.'))*100),'categorie':self.table.cellWidget(r,7).currentData()})
-        return {'fournisseur':self.fournisseur.text(),'reference':self.reference.text(),'date':iso(self.date),'livraison':iso(self.livraison) if self.livre.isChecked() else '', 'justificatif':self.justificatif.isChecked(),'lignes':lignes,'autorisation_debits':self.debits.isChecked()},montant(self.paye.text()),iso(self.date_paiement)
+        return {'fournisseur':self.fournisseur.text(),'reference':self.reference.text(),'date':iso(self.date),'livraison':iso(self.livraison) if self.livre.isChecked() else '', 'justificatif':self.justificatif.isChecked(),'lignes':lignes,'autorisation_debits':self.debits.isChecked(),'mode_reglement':self.mode_reglement.currentData(),'banque_reglement':self.banque_reglement.currentData()},montant(self.paye.text()),iso(self.date_paiement)
 
 class FinancesPage(ProPage):
     def __init__(self,parent=None):
         super().__init__('Finances et TVA',parent,'finance_tva')
         h=QHBoxLayout();self.debut=calendrier(date.today().replace(day=1).isoformat());self.fin=calendrier();self.regime=combo([('Confirmer le régime',''),('Franchise en base','franchise'),('Assujetti TVA','reel')]);self.credit=QLineEdit('0')
         for texte,w in [('Du',self.debut),('Au',self.fin),('Régime de la période',self.regime),('Crédit antérieur',self.credit)]:h.addWidget(QLabel(texte));h.addWidget(w)
+        self.credit_label=h.itemAt(h.count()-2).widget()
         self.layout.addLayout(h);self.actions_pro.append(bouton(self.layout,'Calculer la période',lambda:self.executer(self.calculer)))
         self.resume=QLabel();self.resume.setWordWrap(True);self.layout.addWidget(self.resume)
         self.taux=QTableWidget(0,7);self.taux.setHorizontalHeaderLabels(['Taux %','Base exigible HT','TVA exigible','TVA perçue','Achats HT','TVA achats','TVA déductible']);self.layout.addWidget(self.taux)
@@ -111,32 +127,51 @@ class FinancesPage(ProPage):
         h=QHBoxLayout()
         for label,fn in [('Ajouter une dépense détaillée',self.ajouter),('Régler le fournisseur',self.payer),('Qualifier une facture',self.qualifier),('Régularisation TVA / avoir',self.ajuster)]:self.actions_pro.append(bouton(h,label,lambda checked=False,fn=fn:self.executer(fn)))
         self.layout.addLayout(h);self.achats=QTableWidget(0,6);self.achats.setHorizontalHeaderLabels(['ID','Fournisseur','Référence','HT','TVA','Reste TTC']);self.layout.addWidget(self.achats)
+        self.regime.setCurrentIndex(max(0,self.regime.findData(g.regime_a_la_date(iso(self.fin)))))
+        self.regime.currentIndexChanged.connect(self.adapter_regime);self.adapter_regime()
     def refresh(self):
         if not self.autorise():
             self.resume.clear();self.alertes.clear();self.taux.setRowCount(0);self.achats.setRowCount(0);return
+        self.regime.setCurrentIndex(max(0,self.regime.findData(g.regime_a_la_date(iso(self.fin)))))
         self.executer(self.lister)
+    def adapter_regime(self):
+        franchise=self.regime.currentData()=='franchise'
+        self.findChild(QLabel,'title').setText('Finances · TTC' if franchise else 'Finances et TVA')
+        self.findChild(QLabel,'lead').setText('Recettes et dépenses TTC. Franchise en base : TVA non collectée et non déductible.' if franchise else 'Dépenses HT / TVA / TTC et calculs de TVA par taux.')
+        self.credit.setVisible(not franchise);self.credit_label.setVisible(not franchise);self.taux.setVisible(not franchise)
+        for b in self.actions_pro:
+            if b.text() in ('Ajouter une dépense détaillée','Ajouter une dépense TTC'):b.setText('Ajouter une dépense TTC' if franchise else 'Ajouter une dépense détaillée')
+            if b.text() in ('Qualifier une facture','Régularisation TVA / avoir'):b.setVisible(not franchise)
+        self.achats.setColumnHidden(4,franchise)
+        self.achats.setHorizontalHeaderItem(3,QTableWidgetItem('Total TTC' if franchise else 'HT'))
+        self.resume.clear();self.alertes.clear()
+        if self.autorise(): self.lister()
+
     def lister(self):
         achats=self.service.achats();self.achats.setRowCount(len(achats))
         for r,a in enumerate(achats):
-            valeurs=[a['id'],a['fournisseur'],a['reference'],money_text(sum(l['ht'] for l in a['lignes'])),money_text(sum(l['tva'] for l in a['lignes'])),money_text(a['reste'])]
+            valeurs=[a['id'],a['fournisseur'],a['reference'],money_text(sum(l['ttc' if self.regime.currentData()=='franchise' else 'ht'] for l in a['lignes'])),money_text(sum(l['tva'] for l in a['lignes'])),money_text(a['reste'])]
             for c,v in enumerate(valeurs):self.achats.setItem(r,c,QTableWidgetItem(str(v)))
     def calculer(self):
-        s=self.service.calculer(iso(self.debut),iso(self.fin),self.regime.currentData(),montant(self.credit.text()))
+        s=self.service.calculer(iso(self.debut),iso(self.fin),self.regime.currentData(),0 if self.regime.currentData()=='franchise' else montant(self.credit.text()))
         self.resume.setText('TVA perçue : '+money_text(s['tva_percue'])+' • TVA exigible : '+money_text(s['tva_exigible'])+' • TVA déductible : '+money_text(s['tva_deductible'])+'\nÀ reverser : '+money_text(s['a_reverser'])+' • Crédit : '+money_text(s['credit']))
+        if s['regime']=='franchise':self.resume.setText('Franchise en base · Montants TTC\nRecettes : '+money_text(s['recettes_ttc'])+' · Dépenses : '+money_text(s['depenses_ttc'])+' · Différence : '+money_text(s['solde_periode'])+'\nTVA non collectée et non déductible.')
         self.taux.setRowCount(len(s['taux']))
         for r,l in enumerate(s['taux']):
             for c,k in enumerate(['taux','base_exigible','tva_exigible','tva_percue','base_achats','tva_achats','tva_deductible']):self.taux.setItem(r,c,QTableWidgetItem(str(l[k]/100) if c==0 else money_text(l[k])))
-        self.alertes.setText('\n'.join(s['alertes']) or 'Calcul prêt à vérifier avant déclaration.');self.lister()
+        self.alertes.setText('\n'.join(s['alertes']) or ('Suivi TTC de la période.' if s['regime']=='franchise' else 'Calcul prêt à vérifier avant déclaration.'));self.lister()
     def ajouter(self):
-        d=AchatDialog(self)
+        d=AchatDialog(self,franchise=self.regime.currentData()=="franchise")
         while d.exec()==QDialog.Accepted:
             try:a,m,j=d.donnees();self.service.ajouter_achat(a,m,j,operation_existante=d.operation.currentData());self.lister();break
             except Exception as e:QMessageBox.warning(d,'Dépense',str(e))
     def payer(self):
         r=self.achats.currentRow()
         if r<0:raise ValueError('Sélectionnez un fournisseur.')
-        ident=int(self.achats.item(r,0).text());d=QDialog(self);d.setWindowTitle('Règlement fournisseur');f=QFormLayout(d);j=calendrier();m=QLineEdit();f.addRow('Date',j);f.addRow('Montant TTC',m);b=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel);f.addRow(b);b.accepted.connect(d.accept);b.rejected.connect(d.reject)
-        if d.exec()==QDialog.Accepted:self.service.payer_achat(ident,iso(j),montant(m.text()));self.lister()
+        from qt_app import PaymentDialog
+        ident=int(self.achats.item(r,0).text());d=PaymentDialog(parent=self);d.setWindowTitle('Règlement fournisseur')
+        if d.exec()==QDialog.Accepted:
+            j,m,mode,ref=d.values();self.service.payer_achat(ident,j,montant(m),mode,d.banque.currentData(),ref);self.lister()
     def qualifier(self):
         import gestion as g
         factures=[a for a in self.service.factures() if a['type']=='facture']

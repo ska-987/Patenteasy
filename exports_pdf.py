@@ -8,7 +8,7 @@ from localisation import tr
 
 
 def preferences():
-    return QSettings('ska_987', 'Patenteasy')
+    return QSettings('ska_987', 'Patenteasy-TEST' if __import__('edition').DEVELOPPEMENT else 'Patenteasy')
 
 
 def choisir_dossier(parent):
@@ -29,7 +29,7 @@ def choisir_dossier(parent):
     if choix == QMessageBox.StandardButton.Cancel:
         return None
     if choix == QMessageBox.StandardButton.Yes and bureau:
-        dossier = Path(bureau) / 'Patenteasy'
+        dossier = Path(bureau) / ('Patenteasy-TEST' if __import__('edition').DEVELOPPEMENT else 'Patenteasy')
         dossier.mkdir(parents=True, exist_ok=True)
     else:
         nom = QFileDialog.getExistingDirectory(parent, tr('Dossier des devis et factures PDF'), bureau)

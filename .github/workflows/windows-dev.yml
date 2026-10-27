@@ -1,0 +1,102 @@
+name: Patenteasy Windows TEST · développement
+on:
+  push:
+    branches: ['dev/en-cours']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Dépendances
+        run: python -m pip install -r requirements-dev.txt pyinstaller==6.16.0
+      - name: Tests
+        run: python -m pytest -q tests
+      - name: Construction native
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name Patenteasy --icon static/patenteasy.ico --hidden-import edition --hidden-import donnees_test --hidden-import verification_dev --add-data "edition-dev.json;." --hidden-import qt_app --hidden-import database --hidden-import gestion --hidden-import editeur --hidden-import mises_a_jour --hidden-import installer_mise_a_jour --hidden-import verification_distribution --hidden-import publication_release --hidden-import regional --hidden-import localisation --hidden-import sauvegarde_portable --hidden-import recuperation_ui --hidden-import exports_pdf --hidden-import apercu_pdf --hidden-import PySide6.QtPdf --hidden-import PySide6.QtPdfWidgets --hidden-import pdf_documents --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --add-data "static;static" --hidden-import finances_ui --hidden-import finances_pdf --hidden-import finances_pro --hidden-import licences_pro --hidden-import finances_calculs --add-data "licence_editeur.json;." --add-data "configuration_editeur.json;." --add-data "LICENSE;." application_windows.py
+          if ($LASTEXITCODE -ne 0) { throw 'Construction interrompue' }
+      - name: Vérification du programme livré
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP 'verification-programme.json'
+          $p = Start-Process -FilePath '.\dist\Patenteasy\Patenteasy.exe' -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme livré invalide' }
+          $result = Get-Content $report -Raw | ConvertFrom-Json
+          if (-not $result.ok -or $result.version -ne '0.4.5.1') { throw 'Vérification échouée' }
+          Copy-Item $report distribution/verification-programme.json
+      - name: Copie et isolation de la base chiffrée
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP 'verification-dev.json'
+          $p = Start-Process -FilePath '.\dist\Patenteasy\Patenteasy.exe' -ArgumentList @('--self-test-dev', ('"' + $report + '"')) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content $report; throw 'Isolation de la copie invalide' }
+          Copy-Item $report distribution/verification-dev.json
+      - name: Installeur complet
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup --yes --no-progress }
+          & $iscc distribution/Patenteasy-Dev.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installeur non créé' }
+      - name: Installation et conservation des données
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:LOCALAPPDATA 'Programs\PatenteasyLocal-DEV'
+          $production = Join-Path $env:LOCALAPPDATA 'Programs\PatenteasyLocal'
+          New-Item -ItemType Directory -Force $production | Out-Null
+          [IO.File]::WriteAllText((Join-Path $production 'production-marker.txt'), 'programme-a-conserver')
+          $testData = Join-Path $env:LOCALAPPDATA 'PatenteasyLocal-DEV\data'
+          New-Item -ItemType Directory -Force $testData | Out-Null
+          [IO.File]::WriteAllText((Join-Path $testData 'test-marker.txt'), 'copie-a-conserver')
+          $data = Join-Path $env:LOCALAPPDATA 'PatenteasyLocal\data'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $marker = Join-Path $data 'verification-conservation.txt'
+          [IO.File]::WriteAllText($marker, 'donnees-a-conserver')
+          $installer = Resolve-Path 'distribution/sortie/Patenteasy-Windows-TEST-Installation.exe'
+          foreach ($pass in 1..2) {
+            $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $target + '"')) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw 'Installation échouée' }
+            if ((Get-Content $marker -Raw) -ne 'donnees-a-conserver') { throw 'Données altérées' }
+            $report = Join-Path $env:RUNNER_TEMP ('verification-installation-' + $pass + '.json')
+            $p = Start-Process -FilePath (Join-Path $target 'Patenteasy.exe') -ArgumentList @('--self-test', ('"' + $report + '"')) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { if (Test-Path $report) { Get-Content $report }; throw 'Programme installé invalide' }
+            if (-not (Get-Content $report -Raw | ConvertFrom-Json).ok) { throw 'Vérification échouée' }
+            Copy-Item $report distribution/
+          }
+          $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Patenteasy TEST.lnk'
+          if (-not (Test-Path $shortcut)) { throw 'Raccourci de test absent' }
+          $p = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART', ('/DIR="' + $production + '"')) -Wait -PassThru
+          if ($p.ExitCode -eq 0 -or (Test-Path (Join-Path $production 'Patenteasy.exe'))) { throw 'Installation sur la production non bloquée' }
+          $p = Start-Process -FilePath (Join-Path $target 'unins000.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw 'Désinstallation de test échouée' }
+          if ((Get-Content (Join-Path $testData 'test-marker.txt') -Raw) -ne 'copie-a-conserver') { throw 'Copie de test supprimée' }
+          if ((Get-Content (Join-Path $production 'production-marker.txt') -Raw) -ne 'programme-a-conserver') { throw 'Programme de production altéré' }
+          if ((Get-Content $marker -Raw) -ne 'donnees-a-conserver') { throw 'Données de production altérées' }
+          @{ok=$true;installer_separe=$true;reinstallation=$true;raccourci_test=$true;installation_sur_production_refusee=$true;desinstallation_preserve_copie=$true;production_preservee=$true} | ConvertTo-Json | Set-Content distribution/verification-installeur-dev.json -Encoding utf8
+      - name: Empreinte et sources
+        shell: pwsh
+        run: |
+          $exe = Get-Item 'distribution/sortie/Patenteasy-Windows-TEST-Installation.exe'
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($exe.Name)" | Set-Content distribution/sortie/SHA256SUMS.txt -Encoding ascii
+          @{ version='0.4.5.1'; taille=$exe.Length; sha256=$hash; source=$env:GITHUB_SHA } | ConvertTo-Json | Set-Content distribution/sortie/version-verifiee.json -Encoding utf8
+          Copy-Item docs/DEVELOPPEMENT-EN-COURS.md distribution/sortie/LIRE-TEST.md
+          Copy-Item distribution/verification-*.json distribution/sortie/
+          Copy-Item distribution/module-ui-*.png distribution/sortie/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Patenteasy-Windows-TEST
+          path: distribution/sortie/*
+          if-no-files-found: error
+          retention-days: 30

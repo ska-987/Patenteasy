@@ -66,22 +66,25 @@ class FinancesPro:
                 if c.execute('SELECT 1 FROM paiements_achats_pro WHERE operation_id=?',(operation_existante,)).fetchone() or c.execute('SELECT 1 FROM remboursements WHERE operation_id=?',(operation_existante,)).fetchone():raise ValueError('Cette dépense est déjà liée à un règlement ou remboursement.')
             ident=c.execute('INSERT INTO achats_pro(contenu) VALUES(?)',(json.dumps(a,ensure_ascii=False),)).lastrowid
             if ancien:c.execute('INSERT INTO paiements_achats_pro(achat_id,operation_id,jour,montant) VALUES(?,?,?,?)',(ident,operation_existante,ancien['date_operation'],ancien['montant_centiemes']))
-            if montant_regle:self._payer(c,ident,a,date_reglement,montant_regle)
+            if montant_regle:self._payer(c,ident,a,date_reglement,montant_regle,a.get("mode_reglement","autre"),a.get("banque_reglement",""))
         return ident
 
-    def _payer(self,c,ident,a,d,m):
+    def _payer(self,c,ident,a,d,m,mode="autre",banque="",reference=""):
         if d<a['date'] or d>date.today().isoformat():raise ValueError('Date de règlement invalide.')
-        op=c.execute("INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes) VALUES(?,?,'depense',?)",(d,'Règlement fournisseur '+a['fournisseur']+' · '+a['reference'],m)).lastrowid
+        if mode not in ('virement','cheque','carte','especes','autre'): raise ValueError('Moyen de paiement invalide.')
+        banque=g.GestionDocuments(self.base).verifier_banque(banque,mode)
+        libelle='Règlement fournisseur '+a['fournisseur']+' · '+a['reference']+' · '+mode+(' · '+banque if banque else '')+(' · '+reference if reference else '')
+        op=c.execute("INSERT INTO operations(date_operation,libelle,type_operation,montant_centiemes,banque) VALUES(?,?,'depense',?,?)",(d,libelle,m,banque)).lastrowid
         c.execute('INSERT INTO paiements_achats_pro(achat_id,operation_id,jour,montant) VALUES(?,?,?,?)',(ident,op,d,m))
 
-    def payer_achat(self,ident,d,m):
+    def payer_achat(self,ident,d,m,mode="autre",banque="",reference=""):
         self.licence.exiger('finance_tva');jour(d);entier(m,1)
         with self.base.session() as c:
             r=c.execute('SELECT contenu FROM achats_pro WHERE id=?',(ident,)).fetchone()
             if not r:raise ValueError('Achat absent.')
             a=json.loads(r[0]);paye=c.execute('SELECT COALESCE(SUM(montant),0) FROM paiements_achats_pro WHERE achat_id=?',(ident,)).fetchone()[0]
             if paye+m>sum(l['ttc'] for l in a['lignes']):raise ValueError('Le paiement dépasse le reste fournisseur.')
-            self._payer(c,ident,a,d,m)
+            self._payer(c,ident,a,d,m,mode,banque,reference)
 
     def factures(self):
         self.licence.exiger('finance_tva')
@@ -128,7 +131,20 @@ class FinancesPro:
         result=synthese(debut,fin,documents,achats,regime,credit,corrections)
         if recettes_non_detaillees:avertissements.append(str(recettes_non_detaillees)+' recette(s) hors encaissement de facture : TVA à vérifier et régulariser si nécessaire.')
         if anciens:avertissements.append(str(anciens)+' ancienne(s) dépense(s) sans détail HT/TVA : à rapprocher avant déclaration.')
-        result['alertes']=list(dict.fromkeys(result['alertes']+avertissements));result['depenses_non_detaillees']=anciens
+        with self.base.session() as c:
+            totaux={r['type_operation']:r['total'] for r in c.execute('SELECT type_operation,SUM(montant_centiemes) AS total FROM operations WHERE date_operation BETWEEN ? AND ? GROUP BY type_operation',(debut,fin))}
+        result['recettes_ttc']=totaux.get('recette',0);result['depenses_ttc']=totaux.get('depense',0)
+        result['solde_periode']=result['recettes_ttc']-result['depenses_ttc']
+        if regime=='franchise':
+            result['taux']=[]
+            avertissements=[]
+            if any(l['tva'] for d in documents if debut<=d['date']<=fin for l in d['lignes']):
+                avertissements.append('Des factures de cette période comportent de la TVA : vérifiez le régime sélectionné.')
+            rappel=g.GestionDocuments(self.base).rappel_seuil_ca(int(fin[:4]))
+            if rappel: avertissements.append(rappel)
+            result['alertes']=avertissements
+        else: result['alertes']=list(dict.fromkeys(result['alertes']+avertissements))
+        result['depenses_non_detaillees']=anciens
         return result
 
     def preparer(self,genre,debut,fin,echeance,source,regime,credit=0):
