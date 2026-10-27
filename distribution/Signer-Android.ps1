@@ -19,7 +19,7 @@ try {
     if (Get-Command py -ErrorAction SilentlyContinue) { $python = 'py' }
     & $python (Join-Path $PSScriptRoot 'sources\distribution\signer_android_local.py') $PSScriptRoot
     if ($LASTEXITCODE -ne 0) { throw 'Signature échouée. Ne pas utiliser le fichier A-SIGNER sur le téléphone.' }
-    Write-Host 'Terminé : transférez Patenteasy-Android-0.4.5.1.apk sur le téléphone puis ouvrez-le pour mettre à jour.'
+    Write-Host 'Terminé : transférez Patenteasy-Android-0.4.6.apk sur le téléphone puis ouvrez-le pour mettre à jour.'
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
     exit 1
